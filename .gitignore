@@ -1,4 +1,4 @@
-# Private runtime state and credentials
+# Private local configs, credentials, sessions and agent runtime
 **/.env
 **/.env.*
 **/config.json
@@ -26,7 +26,10 @@
 **/node_modules/
 **/.venv/
 **/venv/
+**/.DS_Store
+# Developer-local installation state
 **/browser-user-data/
 **/chrome-profile/
+**/extensions-state/
 **/.secrets/
 **/local-run-logs/

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "campaign_id": "chain2",
+  "source_manifest": "sdd1.json",
+  "seed_count": 10,
+  "max_queued": 10,
+  "max_active": 25,
+  "requires_owner_arm": true,
+  "roles": [
+    "developer",
+    "reviewer"
+  ],
+  "delivery": "handoff_request_end_only",
+  "features_require_review": true
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "author": {
+    "name": "Local developer",
+    "email": "developer@example.invalid"
+  },
+  "description": "Minimal local MCP App test of the supported openai/message target=new extension.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "capabilities": [
+          "Interactive"
+        ],
+        "category": "Productivity",
+        "defaultPrompt": "Открой тестовую панель New Chat Smoke Test и проверь создание одного нового чата.",
+        "developerName": "Upgrade",
+        "displayName": "New Chat Smoke Test",
+        "longDescription": "Одна кнопка проверяет, поддерживает ли текущий ChatGPT host отправку сообщения в новый разговор через MCP Extensions. Не отправляет сообщение без клика и не использует ChatGPT private API.",
+        "shortDescription": "Тест создания нового чата"
+      }
+    }
+  },
+  "name": "chat-launch-smoke",
+  "version": "0.1.0"
+}

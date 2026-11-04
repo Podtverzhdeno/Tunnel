@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "campaign_id": "chain3",
+  "continuation_of": "chain2",
+  "roles": [
+    "developer",
+    "reviewer"
+  ],
+  "seed_count": 10,
+  "max_active": 10,
+  "max_queued": 4,
+  "min_claim_interval_seconds": 120,
+  "max_claims_per_utc_day": 40,
+  "requires_owner_arm": true,
+  "scope": "approved_open_spec_sdd_qa_only",
+  "admission": "parent_report_ack_and_handoff",
+  "policy": "meaningful_work_required_no_proposals_autoapproved"
+}

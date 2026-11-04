@@ -1,0 +1,816 @@
+{
+  "schema_version": 1,
+  "campaign_id": "sdd1",
+  "name": "OpenSpec SDD continuation with bounded chained developer-reviewer handoffs",
+  "allowed_project": "chat-launch-smoke-desktop-test",
+  "max_queued": 4,
+  "max_active": 25,
+  "requires_owner_arm": true,
+  "stages": [
+    "feature",
+    "developer",
+    "reviewer"
+  ],
+  "tickets": [
+    {
+      "id": "l01-roadmap",
+      "title": "P163/P167 — SDD mapping and export/provenance contracts",
+      "goal": "Reconcile P163/P167 canonical SDD mapping with token_usage_export and team_acceptance_audit; design isolated pure sanitization and QA provenance APIs without claiming owner admission. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-71736f87-ef12-4c6e-9d37-5e76ad3157d4.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P163/P167 — SDD mapping and export/provenance contracts.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l02-redaction",
+      "title": "P164 — redaction negative regressions",
+      "goal": "Reproduce and isolate eight negative failures in P164 logging redaction (JSON secrets, multiline, Unicode, paths and raw job/audit sinks) and propose bounded sanitizer integration. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-355fa638-c983-4e45-aef9-cfb6616632a9.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P164 — redaction negative regressions.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l03-approvals",
+      "title": "P168 — one-use host approval denial",
+      "goal": "Implement an isolated model of approval-denial negative vectors and verification for forged actor, wrong tool/args/workspace, expired approvals and replay, without host permission changes. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-fa02b4c7-465e-46fd-a730-a7060e7960fe.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P168 — one-use host approval denial.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l04-ledger",
+      "title": "P165/P169 — durable ledger and saturation boundaries",
+      "goal": "Prototype fail-closed offline ledger consistency checks and time-series saturation classifications, consuming P153 rather than duplicating its static quota logic. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-212c33fa-27e7-4366-aceb-e4a55b76a874.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P165/P169 — durable ledger and saturation boundaries.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l05-p104",
+      "title": "P104 — current-source QA provenance",
+      "goal": "Reproduce P104 CURRENT_SOURCE_HASH_MISMATCH and build read-only provenance diagnostics that distinguish recorded acceptance from current source integrity. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-fff72278-7cac-43c4-8bdd-9f1a876f7b52.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P104 — current-source QA provenance.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l06-p108",
+      "title": "P108 — unrestricted executor aliases",
+      "goal": "Implement isolated regression and defensive canonical capability-name matching for namespaced run_script/run_command aliases, preserving DENY and structural-only evidence distinctions. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-7921fd48-8e33-4ff8-b0fb-d010a52a51bd.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P108 — unrestricted executor aliases.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l07-p148",
+      "title": "P148 — stale dependency provenance",
+      "goal": "Prototype fail-closed predecessor source/spec SHA validation in advisory scheduling and tests for starvation, lease ambiguity, wrong dependencies and missing acceptance. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-e580fe3f-9a6b-49c7-bfde-ad98bf9d81fc.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P148 — stale dependency provenance.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l08-p111",
+      "title": "P111 — injection and normalization bounds",
+      "goal": "Implement isolated robust risk-classifier prototype for untrusted Markdown/Unicode injections and bound NFKC expansion, preserving REVIEW != ALLOW semantics. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-bb9b10e4-4018-4a60-813e-8cf1966bd130.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P111 — injection and normalization bounds.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l09-p096",
+      "title": "P096 — stale lease CAS recovery",
+      "goal": "Build an offline CAS/lease recovery simulator and decision matrix for expired owner leases, source drift, unknown outcomes, retries and trusted host checks. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-62eee6b0-a509-40ad-9ab5-2fbb74f65cde.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P096 — stale lease CAS recovery.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "l10-negative",
+      "title": "P152/P153/P159 — negative evidence correctness",
+      "goal": "Reproduce pinned candidate negative witnesses and design conservative monotonic budget/retention/error causality checks with exact source hashes. First read original completed research report chat-launch-smoke-desktop-test/agent-reports/completion-05ddff15-d6f1-43b6-8689-f3aa114b2187.md. Check its evidence and SHA before new work.  Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P152/P153/P159 — negative evidence correctness.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 10
+    },
+    {
+      "id": "m01-roadmap-integ",
+      "title": "P163/P167 — no-duplicate-owner integration contracts",
+      "goal": "Refine existing module API reuse, owner contract map, deterministic adapter tests and gate-ready documentation for offline usage export and conservative acceptance audit. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P163/P167 — no-duplicate-owner integration contracts.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m02-redact-sinks",
+      "title": "P164 — sink-level sanitization prototype",
+      "goal": "Isolated end-to-end test double for Jobs.output and Audit.write redaction with chunk boundaries, DSNs, secrets and privacy false positives; no live MCP data. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P164 — sink-level sanitization prototype.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m03-approval-e2e",
+      "title": "P168 — simulated approval policy E2E",
+      "goal": "Run a sandbox enforcement harness showing one-shot action approvals, idempotency, TTL, revocation and audit denial; distinguish host identity UNKNOWN. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P168 — simulated approval policy E2E.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m04-ledger-e2e",
+      "title": "P165/P169 — restart and trace integrity",
+      "goal": "Build an offline action-event replay harness with hash-chain fork detection, missing sequence, restart ambiguity, P153 quota signals and alert hysteresis. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P165/P169 — restart and trace integrity.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m05-p104-qa",
+      "title": "P104 — QA remediation provenance gate",
+      "goal": "Produce dry-run recipes and tests for source-anchored acceptance receipts, code drift, reviewer independence and queue-supply dependency classification. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P104 — QA remediation provenance gate.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m06-p108-registry",
+      "title": "P108 — trusted tool registry attack cases",
+      "goal": "Stress-test canonical capability ID parsing and deny-by-default under untrusted registry risk metadata and namespaced tool invocation. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P108 — trusted tool registry attack cases.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m07-p148-fairness",
+      "title": "P148 — fair scheduler under stale evidence",
+      "goal": "Simulate starvation, owned rework and priority inversion under stale source/spec evidence; keep lease issuance disabled and propose deterministic decisions. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P148 — fair scheduler under stale evidence.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m08-p111-resource",
+      "title": "P111 — Unicode and precision hardening",
+      "goal": "Use independent fuzz corpus and bounded normalization gate for false-negative injection and false-positive benign text, preserving conservative action semantics. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P111 — Unicode and precision hardening.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m09-p096-recover",
+      "title": "P096 — idempotent recovery state machine",
+      "goal": "Verify offline lease supersession state machine with ABA defense, expected-version CAS, stale owner denial and persistent recovery journal design. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P096 — idempotent recovery state machine.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "m10-negative-qa",
+      "title": "P152/P153/P159 — new counterexample minimization",
+      "goal": "Minimize existing negative witnesses and build fixed-source, data-only regression fixtures with unknown coverage preserved, without modifying candidate modules. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P152/P153/P159 — new counterexample minimization.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 9
+    },
+    {
+      "id": "n01-sdd-trace",
+      "title": "SDD provenance cross-wave audit",
+      "goal": "Independently trace SDD roadmap, owner/reuse contracts and receipt hashes for first two waves; no auto-admission or approval. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for SDD provenance cross-wave audit.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 8
+    },
+    {
+      "id": "n02-secret-privacy",
+      "title": "Privacy/sanitization integration QA",
+      "goal": "Independently audit isolated redaction/sink prototypes for secrets, path leakage, truncation and malicious encodings with reproducible negative tests. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for Privacy/sanitization integration QA.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 8
+    },
+    {
+      "id": "n03-host-bound",
+      "title": "P085 and grant-boundary QA",
+      "goal": "Independently assess isolation and trust boundaries across simulated approvals, tool registry and adverse actor identity; never assert host attestation. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for P085 and grant-boundary QA.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 8
+    },
+    {
+      "id": "n04-dep-qa",
+      "title": "Dependency and fairness integration QA",
+      "goal": "Independently test simulated P104/P148/P096 provenance and lease chains, fail-closed admission and replay under concurrency. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for Dependency and fairness integration QA.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 8
+    },
+    {
+      "id": "n05-runtime-qa",
+      "title": "Trace and budget integration QA",
+      "goal": "Independently test offline ledger, P152/P153/P159 trace/budget prototypes and restart persistence with deterministic failure injection. Work only in the chain2 ticket/role isolated directory; use the existing canonical code read-only.",
+      "acceptance": [
+        "Deliver a concrete, runnable Python stdlib implementation or precise read-only test/provenance harness for Trace and budget integration QA.",
+        "Inspect exact canonical OpenSpec and MASTER_SDD before design; document accepted dependencies and source SHA.",
+        "Do not add a duplicate canonical module: map existing owner/API and describe reuse decision.",
+        "Produce schema-validated, deterministic inputs/outputs with explicit UNKNOWN or DENY on missing trust evidence.",
+        "Record 5+ nontrivial negative cases including stale/contradictory/corrupt evidence, with observed outcomes.",
+        "Do not grant identity, approvals, lease, reviewer acceptance, payment or production capability in the prototype.",
+        "Include detailed README and handoff with changed file list, independently verifiable test receipts and next_focus.",
+        "Verify same-file SHA before reads/writes and preserve another agent's isolated work unchanged."
+      ],
+      "failure_scenarios": [
+        "Source SHA changes between reading and use",
+        "Partial failure or ambiguous result must not be upgraded to PASS",
+        "Duplicate work or claimed host actor authority without trusted evidence",
+        "Regression to broader access, stale lease or mismatched predecessor"
+      ],
+      "interfaces": [
+        "Pure Python stdlib API and JSON serializable bounded structures",
+        "CLI/pytest-or-unittest adapter with exact command receipts and no network effects"
+      ],
+      "validation": [
+        "Run focused suite and report actual rc, PASS/FAIL/UNKNOWN counts",
+        "Document executable, reproducible adversarial regression cases",
+        "Verify one isolated integration/replay test with real command output",
+        "Attach source SHA, file paths and independent review handoff"
+      ],
+      "priority": 8
+    }
+  ]
+}

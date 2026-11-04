@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT New Chat Smoke — Web Companion",
+  "version": "0.6.6",
+  "description": "Queues one authenticated local ChatGPT task, opens an inactive tab in an existing window and closes it on completion.",
+  "permissions": [
+    "alarms",
+    "tabs",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:18763/*",
+    "https://chatgpt.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": { "default_popup": "popup.html", "default_title": "Chat Smoke: диагностика" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "core.js",
+        "content.js",
+        "background_content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
