@@ -9,6 +9,7 @@
 - [x] **Установка observer-auth без чужих секретов:** `scripts/observer_auth.py init/check/serve`; `init` повторно не меняет ключ, ключ не печатается. `scripts/verify-portable-install.py --test-powershell` проверяет реальный HTTP 200/401 и два запуска установщика в очищаемом каталоге.
 - [x] Локальная сборка браузерного расширения, новый личный bridge-key, тесты New Chat Smoke Test, регрессия Chain3 и тесты HTTP-MCP.
 - [x] Выбор `sandbox` / `trusted` в Chain3 с явным статусом, без молчаливого повышения прав.
+- [x] `scripts/status-stack.py` — read-only диагностика авторизованного MCP, bridge, heartbeat браузера, Chain2/Chain3 и конкретных причин блокировки. Проверяется `scripts/test_status_stack.py`.
 
 ## Фактическая диагностика работающего экземпляра
 
