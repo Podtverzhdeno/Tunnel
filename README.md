@@ -17,6 +17,23 @@
 | `chat-launch-smoke-desktop-test/web-extension/` | Распаковываемое расширение Chromium/Chrome/YaBrowser (Manifest V3). |
 | `scripts/install-local.ps1` | Первичная установка конфигураций без публикации секретов. |
 
+## Быстрый старт: проверка чистой установки за один запуск
+
+Сначала клонируйте репозиторий и запустите **офлайн-проверку без подключения к ChatGPT**:
+
+```powershell
+git clone https://github.com/Podtverzhdeno/Tunnel.git
+cd Tunnel
+py -3 scripts\verify-portable-install.py
+```
+
+Успех: JSON `"ok": true`, доступно 28 инструментов локального MCP, пройдены тесты New Chat Smoke Test, создан новый **временный** ключ для тестового bridge и проверена неактивная Chain3. Скрипт работает в очищаемом временном каталоге и **не** устанавливает реальные плагины, не связывается с OpenAI, не создаёт чаты, не запускает службы. Для фактической установки используйте шаг 2 ниже.
+
+**Два пути:**
+
+- **Локальная проверка/демо:** Python, MCP observer, браузерное расширение; ключ OpenAI API не нужен.
+- **Подключение к ChatGPT:** собственный Platform Secure MCP Tunnel, разрешение на custom MCP и работающий `tunnel-client`. Полноценный режим записи доступен не на каждом тарифе.
+
 ## 0. Что нужно до установки
 
 - **Windows 10/11** с PowerShell, **Python 3.10+**, Git, браузер Chrome/YaBrowser/другой совместимый Chromium.
@@ -26,6 +43,8 @@
 - Подписка ChatGPT и платные запросы OpenAI API — **разные продукты** с разными квотами и оплатой.
 
 Официальные инструкции: [создание custom MCP](https://developers.openai.com/api/docs/guides/custom-mcp-server), [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels), [API keys](https://developers.openai.com/api/docs/guides/api-keys), [установка unpacked extension](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world).
+
+**Доступность по планам (проверено 04.11.2026):** создание и подключение custom MCP зависит от ChatGPT-плана и роли. По [официальной справке OpenAI](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt), полная работа MCP с операциями записи доступна в Business/Enterprise/Edu при соответствующих правах; Pro поддерживает custom MCP с ограниченными возможностями чтения/получения. Для Plus/Go/Free не следует обещать создание собственных полнофункциональных MCP-плагинов. Проверяйте настройки `Plugins` своего аккаунта **до** покупки чего-либо. Репозиторий и локальная проверка доступны независимо от тарифа.
 
 ## 1. Клонировать проект
 
@@ -45,8 +64,9 @@ git status
 ## 2. Быстрая локальная подготовка (Windows)
 
 ```powershell
-New-Item -ItemType Directory -Force "C:\Work\AgentProjects" | Out-Null
-powershell -NoProfile -File .\scripts\install-local.ps1 -ProjectsPath "C:\Work\AgentProjects"
+$projects = Join-Path $env:USERPROFILE "AgentProjects"
+New-Item -ItemType Directory -Force -Path $projects | Out-Null
+powershell -NoProfile -File .\scripts\install-local.ps1 -ProjectsPath $projects
 ```
 
 Скрипт безопасно:
@@ -57,6 +77,9 @@ powershell -NoProfile -File .\scripts\install-local.ps1 -ProjectsPath "C:\Work\A
 5. запускает локальную диагностику. Скрипт **не** создаёт ChatGPT-плагины, API-ключи или Windows-аккаунты и **не** публикует секреты.
 
 Не загружайте созданные файлы `config.json`, `bridge-config.json`, `bridge-state/` в GitHub!
+
+
+**Проверка нового клона:** `py -3 scripts\\verify-portable-install.py` должна вернуть `"ok": true`. Если она не пройдена, **не** подключайте этот каталог к ChatGPT или браузеру. На Windows скрипт PowerShell можно дополнительно прогнать в изолированной копии исходников; запуск из README остаётся ручным действием владельца.
 
 ## 3. Local Workspace MCP — сервер на своём ПК
 
@@ -154,6 +177,11 @@ py -3 verify_plugin.py
 Для подключаемой через ChatGPT версии создайте **ещё один** собственный MCP-туннель/профиль `new-chat-smoke`, направленный на stdio-команду `python <ABSOLUTE_PATH_TO_REPO>\chat-launch-smoke-desktop-test\server.py`, по официальной инструкции `tunnel-client`. Затем в Plugins → Add custom MCP server выберите **этот** туннель и имя `New Chat Smoke Test`.
 
 **Нюанс:** `ui/message target=new` — экспериментальная MCP Apps UI-возможность. На Desktop она может поддерживаться; в обычном веб-ChatGPT **создание нового чата самим инструментом не гарантируется**. Панель и сервер не получают скрытые ChatGPT API. Наличие `plugin.json` в GitHub **не создаёт автоматически** приложение в чужом аккаунте.
+
+
+### Что переносится, а что нет
+
+Из GitHub переносятся **код и метаданные** приложений. У другого пользователя появятся **свои** App ID, Extension ID, адрес туннеля, токены и настройки Plugins. Нельзя импортировать действующую авторизацию или копировать пользовательские идентификаторы/токены из чужого профиля. Исходный `Local Workspace` из автора используется как локальная проверяемая копия; его привилегированная production-инсталляция не входит в репозиторий.
 
 ## 8. Установить браузерное расширение Web Companion
 
