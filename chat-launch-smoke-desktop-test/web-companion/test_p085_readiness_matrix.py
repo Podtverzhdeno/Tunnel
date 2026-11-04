@@ -82,6 +82,9 @@ class MatrixTests(unittest.TestCase):
         self.assertEqual(r["status"],"UNKNOWN")
         self.assertFalse(r["can_activate_chain3"])
         self.assertFalse(r["owner_authorization_verified"])
+    @patch.object(m,"check_source_inventory",
+                  new=lambda *_: {"ok":True,"sources_checked":6,
+                                  "dependency_sources_checked":4})
     def test_healthy_but_untrusted_status_always_denies(self):
         with patch.object(m,"run_readonly_script",side_effect=[
             {"ok":True,"value":deployment(blockers=[],

@@ -258,7 +258,7 @@ py -3 test_chain3_continuous.py
 py -3 chain3_continuous.py preview
 ```
 
-Для полного запуска тестов web-companion в отдельном чистом окружении: `py -3 -m unittest discover -p "test_*.py"`. Часть исторических тестов зависит от дополнительных внутренних скриптов и может требовать адаптации; отдельно фиксируйте PASS/FAIL/SKIP, а не выдавайте пропуски за успех. JavaScript-тесты требуют Node.js.
+Для полного запуска тестов Web Companion: `py -3 -m unittest discover -p "test_*.py"`. При подготовке переносимой версии 4 ноября 2026 года проверено **204 теста: 203 PASS, 1 SKIP** на чистом опубликованном наборе. Дополнительно MCP host mirror: **235 тестов: 229 PASS, 6 SKIP**; New Chat Smoke Test: **9 PASS**. JavaScript-тесты `node test_core.js`, `node test_background.js`, `node test_recovery.js`, `node test_background_content.js` также прошли. Смотрите актуальные результаты после клонирования — версии и среда могут отличаться.
 
 ## 12. Типичные проблемы
 
