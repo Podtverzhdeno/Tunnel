@@ -20,8 +20,14 @@ try {
   }
   $raw=(& py -3 manage.py list-roots) -join [Environment]::NewLine
   if ($LASTEXITCODE -ne 0) { throw "list-roots failed" }
-  $roots=@($raw | ConvertFrom-Json)
-  $current=@($roots | Where-Object { $_.name -eq "projects" })
+  $parsed = ConvertFrom-Json -InputObject $raw
+  $roots = @()
+  if ($null -ne $parsed) {
+    foreach ($entry in @($parsed)) {
+      if ($null -ne $entry) { $roots += $entry }
+    }
+  }
+  $current=@($roots | Where-Object { $null -ne $_ -and $_.name -eq "projects" })
   if ($current.Count -gt 0) {
     if ([IO.Path]::GetFullPath([string]$current[0].path) -ne [IO.Path]::GetFullPath($folder)) {
       throw "projects alias already points to another directory; inspect config.json"
