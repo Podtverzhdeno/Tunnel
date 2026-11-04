@@ -80,9 +80,10 @@ powershell -NoProfile -File .\scripts\install-local.ps1 -ProjectsPath $projects
 Скрипт безопасно:
 1. создаёт `Local-Workspace-Extensions/mcp-host-source/config.json` со списком доступных папок, если его нет;
 2. добавляет alias `projects` только для указанной папки (по умолчанию **read-only**; опционально `-AllowWrite`);
-3. создаёт **новый случайный** локальный ключ для web bridge в `web-companion/bridge-state/token`, если его нет;
-4. копирует связанный `bridge-config.json` в распаковываемое расширение;
-5. запускает локальную диагностику. Скрипт **не** создаёт ChatGPT-плагины, API-ключи или Windows-аккаунты и **не** публикует секреты.
+3. создаёт **отдельный** личный bearer для read-only MCP HTTP в `mcp-host-source/.local-mcp-state/`, без его вывода в терминал;
+4. создаёт **другой** случайный ключ для web bridge в `web-companion/bridge-state/token`;
+5. копирует `bridge-config.json` в распаковываемое расширение;
+6. запускает локальную диагностику. Скрипт **не** создаёт ChatGPT-плагины, API-ключи или Windows-аккаунты и **не** публикует секреты.
 
 Не загружайте созданные файлы `config.json`, `bridge-config.json`, `bridge-state/` в GitHub!
 
@@ -91,13 +92,16 @@ powershell -NoProfile -File .\scripts\install-local.ps1 -ProjectsPath $projects
 
 ## 3. Local Workspace MCP — сервер на своём ПК
 
-В первом окне PowerShell:
+В первом окне PowerShell **из корня клонированного Tunnel**:
 
 ```powershell
-cd Local-Workspace-Extensions\mcp-host-source
-py -3 manage.py doctor
-py -3 manage.py serve --port 8765 --profile observer
+py -3 scripts\observer_auth.py check
+py -3 scripts\observer_auth.py serve --port 8765
 ```
+
+`observer_auth.py` читает личный ключ из `Local-Workspace-Extensions/mcp-host-source/.local-mcp-state/` и запускает MCP **в том же процессе**. Окно остаётся открытым. Скрипт не печатает ключ; `Ctrl+C` останавливает сервер. Простая команда `manage.py serve` без ключа **не работает**: сервер специально требует `LOCAL_MCP_OBSERVER_BEARER`.
+
+Если ранее запускали старую версию инсталлятора, из корня проекта выполните `py -3 scripts\observer_auth.py init`, затем `check`. Повторный `init` не меняет уже созданный секрет.
 
 Адрес MCP на **этом же** компьютере: `http://127.0.0.1:8765/mcp`. Оставьте окно запущенным.
 
@@ -110,6 +114,8 @@ cd Local-Workspace-Extensions\mcp-host-source
 py -3 manage.py init
 py -3 manage.py add-root --name projects --path "C:\Work\AgentProjects"
 py -3 manage.py doctor
+cd ..\..
+py -3 scripts\observer_auth.py init
 ```
 
 Чтобы сознательно разрешить локальные операции с файлами и тестами в выделенной папке, используйте `--write --execute --git` при добавлении корня. Это **не** включает привилегированную публикацию в ChatGPT.
@@ -143,9 +149,18 @@ tunnel-client help quickstart
 
 ```powershell
 tunnel-client init --sample sample_mcp_stdio_local --profile local-workspace --tunnel-id YOUR_TUNNEL_ID --mcp-server-url "http://127.0.0.1:8765/mcp"
+
+# Из КОРНЯ клона: статический HTTP Authorization локальному observer MCP.
+# Это НЕ ключ OpenAI Platform; файл создаётся installer/observer_auth.py.
+$headerFile=(Resolve-Path ".\Local-Workspace-Extensions\mcp-host-source\.local-mcp-state\observer-authorization-header").Path
+$env:MCP_EXTRA_HEADERS="Authorization: file:$headerFile"
+$env:MCP_DISCOVERY_EXTRA_HEADERS="Authorization: file:$headerFile"
+
 tunnel-client doctor --profile local-workspace --explain
 tunnel-client run --profile local-workspace
 ```
+
+**Зачем два заголовка:** локальный MCP требует `Authorization: Bearer ...` для `POST /mcp`; `tunnel-client` поддерживает [`mcp.extra_headers` и `mcp.discovery_extra_headers`](https://github.com/openai/tunnel-client/blob/master/docs/configuration.md), в том числе безопасную загрузку значения из `file:/путь`. Указанные переменные действуют **только в текущем окне PowerShell**, не коммитьте их содержимое. Если клиент или custom app переопределяет заголовок `Authorization`, статическое значение может быть вытеснено: настройте ожидаемую аутентификацию, не выключайте проверку на MCP-сервере. Это read-only токен, **не** P085/Trusted удостоверение.
 
 `--sample` и поддерживаемые флаги могут меняться: если команда не принимается, используйте `tunnel-client help quickstart` и [текущий официальный runbook](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels); **не подменяйте ошибки фальшивым успехом**.
 
@@ -245,6 +260,15 @@ py -3 chain3_continuous.py select-mode --mode sandbox --confirm-mode-selection
 
 ## 11. Проверка исходников и быстрый smoke-test
 
+В корне клона:
+
+```powershell
+py -3 scripts\test_observer_auth.py
+py -3 scripts\verify-portable-install.py --test-powershell
+```
+
+Второй тест проверяет реальный локальный HTTP: без bearer — **401**, с правильным bearer — **200**. Он также дважды запускает установщик на временной копии и убеждается, что ключи не перезаписываются. Никаких обращений к ChatGPT нет.
+
 ```powershell
 cd Local-Workspace-Extensions\mcp-host-source
 py -3 -m unittest discover -s tests -p "test_*.py"
@@ -266,6 +290,7 @@ py -3 chain3_continuous.py preview
 |---|---|
 | `No roots configured` | Выполните шаг 2 или `manage.py add-root`. |
 | MCP не виден из ChatGPT | `tunnel-client doctor`, работающие процессы, соответствие Platform organization/ChatGPT workspace, наличие прав Plugins. |
+| MCP `OBSERVER_HTTP_AUTH_TOKEN_REQUIRED` или HTTP 401 | Выполните `py -3 scripts\observer_auth.py init`, запуск только через `observer_auth.py serve`; для туннеля настройте `MCP_EXTRA_HEADERS` и `MCP_DISCOVERY_EXTRA_HEADERS` на приватный файл `observer-authorization-header`. |
 | `403 unauthorized` у bridge | `setup_bridge.py`, `build_clean_extension.py`, обновление расширения, `bridge-config.json` с тем же ключом, что в `bridge-state/token`. |
 | Расширение не отправляет | Состояние входа в ChatGPT, правильная версия расширения, разрешения, `status.py`, cooldown/причины в диагностике. |
 | Chain3 `owner_armed=false` | Отдельная процедура owner arm и принятие Chain2 ещё не завершены. |
@@ -276,7 +301,7 @@ py -3 chain3_continuous.py preview
 
 ## 13. Где лежат приватные файлы и что нельзя коммитить
 
-`.gitignore` исключает `**/bridge-state/**`, `**/bridge-config.json`, `**/config.json`, `.env`, `**/.agent-team/**`, локальные отчёты, сессии, credentials и внутренние состояния. **Не копируйте** свои ключи в файлы README или issue. При компрометации ключа выпустите новый ключ, отзовите старый и смените bridge-конфигурацию.
+`.gitignore` исключает `**/bridge-state/**`, `**/.local-mcp-state/**`, `**/bridge-config.json`, `**/config.json`, `.env`, `**/.agent-team/**`, локальные отчёты, сессии, credentials и внутренние состояния. **Не копируйте** свои ключи в файлы README или issue. При компрометации ключа выпустите новый ключ, отзовите старый и смените bridge-конфигурацию.
 
 Публичный репозиторий содержит **исходный код и установочные шаблоны**, не приватные сессии или готовые авторизованные экземпляры приложений. Проверяйте каждый сторонний fork перед предоставлением прав на запуск локального кода.
 
@@ -285,3 +310,8 @@ py -3 chain3_continuous.py preview
 Это экспериментальная система интеграции с локальным ChatGPT UI, а не официальная ChatGPT multi-chat API. Изменения DOM, браузера, MCP SDK и API/планов могут потребовать обновления. Никаких обещаний бесконечной бесплатной генерации, автономного обхода лимитов или успешной настройки P085 без участия владельца.
 
 Если система не проходит стартовую диагностику, создайте issue с версией Python/браузера, кодом ошибки, **без** ключей, логов с личными данными и идентификаторов сессий.
+
+
+## 15. Следующие этапы развития
+
+Смотрите [проверяемый план оставшейся работы](docs/STATUS_AND_ROADMAP.md): безопасный Trusted/P085, полная приёмка Chain2, тест настоящего подключённого аккаунта, контролируемое длительное исполнение и измерение реальных токенов. Ни одна из этих функций не становится автоматически разрешённой после публикации исходников.

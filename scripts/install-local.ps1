@@ -41,6 +41,8 @@ try {
   }
   & py -3 manage.py doctor
   if ($LASTEXITCODE -ne 0) { throw "MCP doctor failed" }
+  & py -3 (Join-Path $repo "scripts\observer_auth.py") init
+  if ($LASTEXITCODE -ne 0) { throw "MCP observer auth setup failed" }
 } finally { Pop-Location }
 Push-Location $bridgeRoot
 try {
@@ -50,7 +52,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "extension build failed" }
 } finally { Pop-Location }
 Write-Host "Done. No keys were printed."
-Write-Host "Start MCP: cd Local-Workspace-Extensions\mcp-host-source; py -3 manage.py serve --profile observer --port 8765"
+Write-Host "Start MCP: from repo root run py -3 scripts\observer_auth.py serve --port 8765"
 Write-Host "Start bridge: cd chat-launch-smoke-desktop-test\web-companion; py -3 start_bridge.py"
 Write-Host "Install unpacked extension folder: chat-launch-smoke-desktop-test\web-extension"
 Write-Host "Create your own Secure MCP Tunnel and ChatGPT custom plugin; see README.md"

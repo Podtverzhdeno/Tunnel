@@ -38,6 +38,7 @@ def call(args,cwd,timeout=40):
 def check_public_source():
     needed=[
         "README.md", ".gitignore","scripts/install-local.ps1",
+        "scripts/observer_auth.py","scripts/test_observer_auth.py",
         "Local-Workspace-Extensions/mcp-host-source/manage.py",
         "Local-Workspace-Extensions/mcp-host-source/workspace_mcp/tools.py",
         "Local-Workspace-Extensions/skills/spec-workflow/SKILL.md",
@@ -96,6 +97,74 @@ def clean_install(tmp):
     check(roots[0]["write"] is False and roots[0]["execute"] is False,
           "Unsafe default MCP permissions")
     return len(doc.get("tools",[])) if isinstance(doc.get("tools"),list)         else doc.get("tools")
+
+def check_observer_transport(host):
+    """Validate actual observer HTTP auth, not merely manage.py doctor."""
+    import socket
+    import time
+    from urllib import error, request
+
+    auth_script=ROOT/"scripts"/"observer_auth.py"
+    check(auth_script.is_file(),"Missing observer launcher")
+    created=json.loads(call([str(auth_script),"init","--host-root",str(host)],ROOT))
+    check(created.get("state")=="created","Observer init did not create new secret")
+    repeated=json.loads(call([str(auth_script),"init","--host-root",str(host)],ROOT))
+    check(repeated.get("state")=="already_initialized","Observer setup not idempotent")
+    header=(host/".local-mcp-state"/"observer-authorization-header").read_text("ascii")
+    check(header.startswith("Bearer ") and len(header)>60,
+          "Observer bearer not generated")
+    check(header not in json.dumps(created)+json.dumps(repeated),
+          "Observer bearer was printed")
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1",0))
+        port=sock.getsockname()[1]
+    proc=subprocess.Popen(
+        [sys.executable,str(auth_script),"serve","--host-root",str(host),
+         "--port",str(port)],cwd=ROOT,stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    url=f"http://127.0.0.1:{port}"
+    try:
+        ok=False
+        for _ in range(45):
+            if proc.poll() is not None:
+                raise AssertionError("Observer server stopped before health check")
+            try:
+                with request.urlopen(url+"/healthz",timeout=.4) as response:
+                    status=json.load(response)
+                if status.get("status")=="ok":
+                    ok=True
+                    break
+            except (OSError,ValueError):
+                time.sleep(.1)
+        check(ok,"Observer MCP server did not become healthy")
+        payload=json.dumps({"jsonrpc":"2.0","id":1,"method":"initialize",
+                             "params":{"protocolVersion":"2025-11-25"}}).encode()
+        def rpc(auth=None):
+            headers={"Content-Type":"application/json"}
+            if auth is not None:
+                headers["Authorization"]=auth
+            req=request.Request(url+"/mcp",data=payload,headers=headers)
+            with request.urlopen(req,timeout=3) as response:
+                return json.load(response)
+        for bad in (None,"Bearer wrong"):
+            try:
+                rpc(bad)
+            except error.HTTPError as exc:
+                check(exc.code==401,"Unauthorized request not rejected")
+            else:
+                raise AssertionError("Unauthorized MCP call succeeded")
+        valid=rpc(header)
+        check(valid.get("result",{}).get("protocolVersion")=="2025-11-25",
+              "Authenticated observer initialize failed")
+        return "authorized_200_unauthorized_401"
+    finally:
+        proc.terminate()
+        try:proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=8)
+
 
 def clean_companion(tmp):
     source=ROOT/"chat-launch-smoke-desktop-test"
@@ -156,11 +225,15 @@ def check_powershell_install(tmp):
     scripts=fixture/"scripts"
     scripts.mkdir()
     shutil.copy2(installer,scripts/"install-local.ps1")
+    shutil.copy2(ROOT/"scripts"/"observer_auth.py",scripts/"observer_auth.py")
     workspace=fixture/"projects"
     workspace.mkdir()
     cmd=["powershell.exe","-NoProfile","-NonInteractive",
          "-ExecutionPolicy","Bypass","-File",
          str(scripts/"install-local.ps1"),"-ProjectsPath",str(workspace)]
+    observer_path=(fixture/"Local-Workspace-Extensions"/"mcp-host-source"/
+                   ".local-mcp-state"/"observer-authorization-header")
+    first_header=None
     for _ in range(2):
         completed=subprocess.run(cmd,cwd=fixture,stdin=subprocess.DEVNULL,
                                  text=True,capture_output=True,timeout=40,
@@ -168,6 +241,13 @@ def check_powershell_install(tmp):
         if completed.returncode:
             raise AssertionError("PowerShell offline quickstart failed: "+
                                  (completed.stderr or completed.stdout)[-500:])
+        check(observer_path.is_file(),"PowerShell installer omitted MCP bearer")
+        current_header=observer_path.read_text(encoding="ascii")
+        check(current_header.startswith("Bearer "),"Invalid installed MCP bearer")
+        check(current_header not in completed.stdout,"Installer printed MCP bearer")
+        if first_header is not None:
+            check(first_header==current_header,"Installer rotated MCP bearer unexpectedly")
+        first_header=current_header
     host=json.loads((fixture/"Local-Workspace-Extensions"/"mcp-host-source"/
                      "config.json").read_text(encoding="utf-8"))
     check(len(host["roots"])==1,"Repeated installer duplicated MCP alias")
@@ -189,9 +269,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix=".portable-verification-",dir=ROOT) as directory:
         root=Path(directory)
         tools=clean_install(root)
+        mcp_http_auth=check_observer_transport(root/"local-workspace")
         smoke=clean_companion(root)
         powershell=check_powershell_install(root) if args.test_powershell else "not_requested"
     print(json.dumps({"ok":True,"source_files_scanned":count,
+                      "mcp_http_auth":mcp_http_auth,
                       "powershell_installer":powershell,
                       "local_mcp_tools":tools,
                       "smoke_app_tests":"passed",
