@@ -45,6 +45,47 @@ def _run_preview(path: Path):
         return {"status":"preview_unavailable"}
 
 
+def _chain2_triage_status(root: Path):
+    script=root/"scripts"/"chain2-triage.py"
+    if script.is_symlink() or not script.is_file():
+        return {"status":"source_missing"}
+    try:
+        result=subprocess.run([sys.executable,str(script)],
+            cwd=str(script.parent),stdin=subprocess.DEVNULL,
+            capture_output=True,text=True,encoding="utf-8",errors="replace",
+            timeout=20)
+        if result.returncode:
+            return {"status":"triage_unavailable"}
+        if len(result.stdout)>100000:
+            return {"status":"triage_too_large"}
+        doc=json.loads(result.stdout)
+    except (OSError,ValueError,subprocess.TimeoutExpired):
+        return {"status":"triage_unavailable"}
+    if not isinstance(doc,dict) or doc.get("ok") is not True or doc.get("read_only") is not True:
+        return {"status":"triage_invalid"}
+    summary=doc.get("summary")
+    if type(summary) is not dict or type(summary.get("active_categories")) is not dict:
+        return {"status":"triage_invalid"}
+    kinds=("browser_delivery_uncertain","handoff_invalid",
+           "handoff_ready_for_role_review","worker_evidence_incomplete",
+           "handoff_request_pending_ack")
+    try:
+        counts={}
+        for k in kinds:
+            value=summary["active_categories"].get(k,0)
+            if type(value) is not int or value<0:
+                raise ValueError()
+            counts[k]=value
+        active=summary["active"]
+        if type(active) is not int or active<0 or sum(counts.values())!=active:
+            raise ValueError()
+    except (TypeError,ValueError,KeyError):
+        return {"status":"triage_invalid"}
+    return {"status":"needs_review" if active else "no_active_jobs",
+            "active":active,"categories":counts,
+            "manual_browser_checks":counts["browser_delivery_uncertain"]}
+
+
 def _mcp_status(root: Path,port: int):
     host=root/"Local-Workspace-Extensions"/"mcp-host-source"
     token_path=host/".local-mcp-state"/"observer-token"
@@ -142,6 +183,7 @@ def summary(root: Path,mcp_port=8765,bridge_port=18763):
     controller=root/"chat-launch-smoke-desktop-test"/"web-companion"
     chain2=_run_preview(controller/"chain_campaign.py")
     chain3=_run_preview(controller/"chain3_continuous.py")
+    chain2_triage=_chain2_triage_status(root)
     if chain2.get("ok") is not True:
         chain2_state=chain2.get("status","unavailable")
     elif not chain2.get("armed"):
@@ -150,6 +192,8 @@ def summary(root: Path,mcp_port=8765,bridge_port=18763):
         chain2_state="admission_held"
     elif chain2.get("ready",0)>0:
         chain2_state="ready"
+    elif chain2.get("states",{}).get("active",0)>0:
+        chain2_state="blocked_active"
     else:
         chain2_state="waiting_or_blocked"
     chain2_view={"status":chain2_state,
@@ -180,10 +224,18 @@ def summary(root: Path,mcp_port=8765,bridge_port=18763):
         actions.append("Check the unpacked Chromium extension and ChatGPT login")
     if chain3_view["effective_mode"]=="blocked":
         actions.append("Trusted Chain3 requires independently verified OS-protected P085 broker")
+    if chain2_triage.get("status")=="needs_review":
+        counts=chain2_triage["categories"]
+        if counts["browser_delivery_uncertain"]:
+            actions.append("Manually inspect uncertain Chain2 browser sends; never replay UNKNOWN")
+        if counts["handoff_invalid"]:
+            actions.append("Review invalid Chain2 handoff artifacts before successor admission")
+        if counts["handoff_ready_for_role_review"]:
+            actions.append("Have the authorized parent role review valid handoff and request successor")
     if chain3_view["chain2_fully_accepted"] is False:
         actions.append("Review Chain2 incomplete and ambiguous active reports before Chain3")
     return {"ok":True,"read_only":True,"mcp":mcp,"bridge":bridge,"extension":extension,
-            "chain2":chain2_view,"chain3":chain3_view,
+            "chain2":chain2_view,"chain2_triage":chain2_triage,"chain3":chain3_view,
             "tunnel":{"status":"not_checked","note":"Run tunnel-client doctor with owner's profile"},
             "next_actions":actions[:12],
             "full_autonomous_ready":False}

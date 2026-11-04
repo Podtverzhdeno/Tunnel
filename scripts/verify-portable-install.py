@@ -40,6 +40,7 @@ def check_public_source():
         "README.md", ".gitignore","scripts/install-local.ps1",
         "scripts/observer_auth.py","scripts/test_observer_auth.py",
         "scripts/status-stack.py","scripts/test_status_stack.py",
+        "scripts/chain2-triage.py","scripts/test_chain2_triage.py",
         "Local-Workspace-Extensions/mcp-host-source/manage.py",
         "Local-Workspace-Extensions/mcp-host-source/workspace_mcp/tools.py",
         "Local-Workspace-Extensions/skills/spec-workflow/SKILL.md",

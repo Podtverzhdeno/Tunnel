@@ -4,6 +4,27 @@
 
 > **Статус на 04.11.2026:** код и установочные файлы опубликованы как переносимый снимок. **Это не готовая production-автономная фабрика:** Chain3 в trusted-режиме требует отдельно установленного защищённого P085-брокера и независимого подтверждения Windows-полномочий. Непрерывное создание чатов, отсутствие лимитов ChatGPT и полностью самостоятельная работа не гарантируются. Установленные у автора аккаунты, App ID, Tunnel ID, токены и состояния не переносятся.
 
+## Готовые ZIP-архивы для другого пользователя
+
+Можно не использовать `git clone`: скачайте ZIP и распакуйте его на Windows.
+
+| Архив | Что внутри |
+|---|---|
+| [Tunnel-Complete-Windows.zip](dist/Tunnel-Complete-Windows.zip) | **Рекомендуется.** Вся система, MCP, два приложения, расширение, исходники Chain2/Chain3 и установка |
+| [Local-Workspace-MCP.zip](dist/Local-Workspace-MCP.zip) | Local Workspace MCP и локальная авторизация |
+| [New-Chat-Smoke-Test.zip](dist/New-Chat-Smoke-Test.zip) | Исходники второго MCP-приложения с `plugin.json` и `mcp.json` |
+| [Web-Companion-Extension.zip](dist/Web-Companion-Extension.zip) | Расширение Chromium и локальный bridge |
+
+**Проверка:** [SHA-256 всех архивов](dist/SHA256SUMS.txt). [Подробная инструкция по установке из ZIP](docs/ARCHIVE_INSTALL_RU.md).
+
+После распаковки полного архива откройте PowerShell в папке `Tunnel` и запустите:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\INSTALL_FROM_ARCHIVE.ps1
+```
+
+Установщик проверит файлы, настроит безопасный локальный read-only MCP, создаст новые токены **на компьютере нового пользователя** и подготовит расширение. **API key, Tunnel ID и приложение в ChatGPT пользователь создаёт самостоятельно**, как описано ниже. ZIP с исходниками **нельзя гарантированно импортировать прямо в ChatGPT как уже зарегистрированный плагин**.
+
 ## Содержание репозитория
 
 | Путь | Что это |
@@ -130,15 +151,65 @@ py -3 scripts\status-stack.py
 
 Команда проверяет авторизованный локальный MCP, bridge, свежесть heartbeat расширения, Chain2/Chain3 и выдаёт список блокеров. Она **не отправляет сообщений, не создаёт агентов, не открывает вкладки и не печатает секреты**. Соединение с `tunnel-client` проверяйте отдельно командой `tunnel-client doctor`.
 
+Если Chain2 зависла в `ACTIVE`, используйте отдельную read-only диагностику:
+
+```powershell
+py -3 scripts\chain2-triage.py
+```
+
+Скрипт разделяет причины на `browser_delivery_uncertain`, `handoff_invalid`, `handoff_ready_for_role_review` и `worker_evidence_incomplete`. Он **никогда не отправляет сообщение повторно**, не создаёт следующий job и не трактует локальный отчёт как доверенную авторизацию. При `browser_delivery_uncertain` владелец должен сверить исходный чат и подтверждение отправки; автоматическое повторение `UNKNOWN` может создать дубликат. Тесты: `py -3 scripts\test_chain2_triage.py`.
+
 ## 4. Где получить API-ключи, Tunnel ID и что именно нужно
 
 | Значение | Где получить | Для чего | Публиковать? |
 |---|---|---|---|
-| **OpenAI Platform API key** | https://platform.openai.com/api-keys → Create new secret key | Платные запросы к OpenAI API, **если вы отдельно запускаете API-агентов** | Никогда |
-| **Tunnel runtime API key** | Там же, в проекте Platform, с правами **Tunnels Read + Use** (доступность зависит от организации) | Авторизация `tunnel-client` | Никогда |
-| **Tunnel ID** (`tunnel_...`) | OpenAI Platform → **Tunnel settings**, создать собственный туннель; требуется Tunnels Manage | Привязка ChatGPT к вашему MCP-серверу | Не использовать чужой |
-| **Local bridge key** | Автоматически создаётся `web-companion/setup_bridge.py` | Защита локального порта `18763` | Никогда |
-| **GitHub token** | https://github.com/settings/personal-access-tokens | **Не нужен**, чтобы просто клонировать публичный репозиторий | Никогда |
+| **OpenAI API key для модельных API-запросов** | [OpenAI Platform → API keys](https://platform.openai.com/api-keys) → Create new secret key | В PowerShell: `$env:OPENAI_API_KEY`. **Не нужен для веб-ChatGPT, браузерного расширения и данного готового MCP-сервера** | Никогда |
+| **Tunnel runtime API key** | [Platform → Organization Runtime API keys](https://platform.openai.com/settings/organization/api-keys), права **Tunnels Read + Use** | В PowerShell с `tunnel-client`: `$env:CONTROL_PLANE_API_KEY` | Никогда |
+| **Tunnel ID** (`tunnel_...`) | [Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels), создать свой туннель; нужны права Tunnels Read + Manage | Параметр `--tunnel-id` при создании профиля или `$env:CONTROL_PLANE_TUNNEL_ID` | Не использовать чужой |
+| **Local Web Companion bridge token** | Автоматически создаётся `web-companion/setup_bridge.py` | `web-companion/bridge-state/token` → `build_clean_extension.py` создаёт приватный `web-extension/bridge-config.json`. **Вручную вставлять не требуется** | Никогда |
+| **GitHub token (необязателен)** | [GitHub Personal access tokens](https://github.com/settings/personal-access-tokens) | Git Credential Manager при публикации в свой репозиторий; для публичного `git clone` не нужен | Никогда |
+
+### Куда именно вставлять API key и токены (Windows)
+
+**1. API key для отдельного LLM/API-агента — необязателен.** Получите его на [OpenAI Platform → API keys](https://platform.openai.com/api-keys). Он **не нужен** для ChatGPT через браузер и не используется готовым `Tunnel` без отдельного API-worker:
+
+```powershell
+# Только если вы отдельно подключили собственный API-исполнитель:
+$env:OPENAI_API_KEY = Read-Host "Вставьте ваш OpenAI API key"
+# После этого запускайте СВОЙ API-скрипт из этого же окна PowerShell.
+```
+
+**2. Runtime API key для Secure MCP Tunnel — обязателен при подключении туннеля.** Создайте в [Organization Runtime API keys](https://platform.openai.com/settings/organization/api-keys) с Tunnels Read + Use. Укажите в **том же окне PowerShell**, где запустите `tunnel-client`:
+
+```powershell
+$env:CONTROL_PLANE_API_KEY = Read-Host "Вставьте ваш Tunnel runtime API key"
+$tunnelId = Read-Host "Вставьте полный Tunnel ID (tunnel_...)"
+# Используйте $tunnelId в команде tunnel-client init --tunnel-id $tunnelId
+```
+
+Это **два разных назначения ключей**: `OPENAI_API_KEY` — оплачиваемые вызовы моделей; `CONTROL_PLANE_API_KEY` — доступ клиента к Tunnel control plane. Отдельный `OPENAI_ADMIN_KEY` для обычного `tunnel-client run` не нужен.
+
+**3. Локальный токен Local Workspace MCP — генерируется автоматически.** Из корня репозитория:
+
+```powershell
+py -3 scripts\observer_auth.py init
+py -3 scripts\observer_auth.py check
+```
+
+Он сохраняется в `Local-Workspace-Extensions/mcp-host-source/.local-mcp-state/observer-authorization-header`. **Не копируйте значение вручную**: команда в шаге 5 ниже использует `MCP_EXTRA_HEADERS="Authorization: file:..."` и `MCP_DISCOVERY_EXTRA_HEADERS`, чтобы `tunnel-client` сам прочитал приватный файл. Этот токен **не** нужно вводить в OpenAI Platform, ChatGPT или браузерное расширение.
+
+**4. Локальный токен Web Companion — тоже генерируется автоматически.**
+
+```powershell
+cd chat-launch-smoke-desktop-test\web-companion
+py -3 setup_bridge.py
+py -3 build_clean_extension.py
+cd ..\..
+```
+
+Один локальный секрет окажется в `web-companion/bridge-state/token`, а соответствующая конфигурация — в `web-extension/bridge-config.json`. После генерации загрузите распакованное расширение из `web-extension/` (шаг 8). Вручную вводить токен в расширение не нужно. **Не копируйте файл `bridge-config.json` на чужой компьютер** — другой пользователь генерирует свой ключ.
+
+**Где хранить:** переменные `$env:...` действуют только в текущем окне PowerShell; не размещайте настоящие ключи в README, `plugin.json`, `mcp.json`, JS, Git, скриншотах и чате. При публикации репозитория локальные `.local-mcp-state/`, `bridge-state/` и `bridge-config.json` должны оставаться исключёнными из Git. **Токены авторизации ChatGPT и cookies вообще не нужны.**
 
 API-ключ нельзя «скачать из ChatGPT»: **его создают в OpenAI Platform**, полный секрет обычно виден один раз. Лучше выпускать отдельный ограниченный ключ для туннеля, а не использовать общий административный ключ. API-ключи нельзя вставлять в `manifest.json`, JS, README, Git, чат, скриншоты или передавать другому пользователю.
 
@@ -146,19 +217,20 @@ API-ключ нельзя «скачать из ChatGPT»: **его создаю
 
 ## 5. Установить Secure MCP Tunnel
 
-1. В [OpenAI Platform](https://platform.openai.com/) выберите правильную организацию/проект и откройте **Tunnel settings**. Создайте собственный туннель и сохраните его `tunnel_id`. Нужны права Tunnels Read + Manage для создания; Read + Use для клиента.
+1. В [OpenAI Platform → Organization → Tunnels](https://platform.openai.com/settings/organization/tunnels) выберите правильную организацию и откройте **Tunnel settings**. Создайте собственный туннель и сохраните его `tunnel_id`. Нужны права Tunnels Read + Manage для создания; Read + Use для клиента.
 2. Скачайте `tunnel-client` из Platform или с [официальной страницы релизов](https://github.com/openai/tunnel-client/releases/latest). Не скачивайте «готовые API-ключи» со сторонних сайтов.
-3. В отдельном PowerShell задайте ключ **локально**, не добавляя его в файлы проекта:
+3. Создайте ключ в [Organization Runtime API keys](https://platform.openai.com/settings/organization/api-keys) с **Tunnels Read + Use**. В отдельном PowerShell задайте runtime key **локально**, не добавляя его в файлы проекта:
 
 ```powershell
-$env:CONTROL_PLANE_API_KEY = Read-Host "Ваш персональный tunnel runtime API key"
+$env:CONTROL_PLANE_API_KEY = Read-Host "Вставьте свой Tunnel runtime API key"
+$tunnelId = Read-Host "Вставьте ваш Tunnel ID (tunnel_...)"
 tunnel-client help quickstart
 ```
 
 4. В соответствии с подсказкой вашей версии `tunnel-client` создайте профиль. Для локального HTTP MCP endpoint:
 
 ```powershell
-tunnel-client init --sample sample_mcp_stdio_local --profile local-workspace --tunnel-id YOUR_TUNNEL_ID --mcp-server-url "http://127.0.0.1:8765/mcp"
+tunnel-client init --sample sample_mcp_remote_no_auth --profile local-workspace --tunnel-id $tunnelId --mcp-server-url "http://127.0.0.1:8765/mcp"
 
 # Из КОРНЯ клона: статический HTTP Authorization локальному observer MCP.
 # Это НЕ ключ OpenAI Platform; файл создаётся installer/observer_auth.py.

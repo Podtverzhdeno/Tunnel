@@ -73,6 +73,28 @@ class StatusTests(unittest.TestCase):
         self.assertFalse(x["full_autonomous_ready"])
         self.assertTrue(any("P085" in y for y in x["next_actions"]))
 
+    def test_chain2_triage_incidents_surface_as_read_only_actions(self):
+        def preview(path):
+            if path.name=="chain_campaign.py":
+                return {"ok":True,"armed":True,"held":False,"ready":0,
+                        "states":{"done":19,"active":9}}
+            return {"ok":True,"selected_mode":"trusted","effective_mode":"blocked",
+                    "owner_armed":False,"chain2_fully_accepted":False}
+        categories={"browser_delivery_uncertain":6,"handoff_invalid":1,
+                    "handoff_ready_for_role_review":1,"worker_evidence_incomplete":1,
+                    "handoff_request_pending_ack":0}
+        with (patch.object(status,"_run_preview",side_effect=preview),
+              patch.object(status,"_chain2_triage_status",return_value={
+                  "status":"needs_review","active":9,"categories":categories}),
+              patch.object(status,"_mcp_status",return_value={"status":"ready"}),
+              patch.object(status,"_bridge_status",return_value={"status":"ready"}),
+              patch.object(status,"_extension_status",return_value={"status":"recent"})):
+            result=status.summary(self.root)
+        self.assertEqual(result["chain2"]["status"],"blocked_active")
+        self.assertEqual(result["chain2_triage"]["active"],9)
+        self.assertTrue(any("never replay" in a for a in result["next_actions"]))
+        self.assertFalse(result["full_autonomous_ready"])
+
     def test_read_only_status_does_not_echo_local_bridge_key(self):
         p=self.root/"chat-launch-smoke-desktop-test"/"web-companion"
         p.mkdir(parents=True)

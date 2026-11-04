@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-11-04",
+  "description": "Reviewed portable source packages, no credentials or sessions",
+  "files": [
+    {
+      "file": "Tunnel-Complete-Windows.zip",
+      "sha256": "6e409e943093d0e91c13e30fa3c568f1374435a4418672f307f4fec612532401",
+      "bytes": 465376,
+      "source_files": 164
+    },
+    {
+      "file": "Local-Workspace-MCP.zip",
+      "sha256": "f0383055d4ad3a62d2e825f1d858694d3309a4183c0c2a1a60928bc71247b3f0",
+      "bytes": 117161,
+      "source_files": 44
+    },
+    {
+      "file": "New-Chat-Smoke-Test.zip",
+      "sha256": "9fca320ab93926456bce4aa02a2a8b384a7b1d032798ac278ec0092f75177854",
+      "bytes": 8836,
+      "source_files": 9
+    },
+    {
+      "file": "Web-Companion-Extension.zip",
+      "sha256": "d9f3fee43510428d91d6c00e136009adc79b4c19a827c0f9b5b645769d9845b8",
+      "bytes": 225874,
+      "source_files": 65
+    }
+  ]
+}

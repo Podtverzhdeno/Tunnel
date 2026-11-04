@@ -10,6 +10,7 @@
 - [x] Локальная сборка браузерного расширения, новый личный bridge-key, тесты New Chat Smoke Test, регрессия Chain3 и тесты HTTP-MCP.
 - [x] Выбор `sandbox` / `trusted` в Chain3 с явным статусом, без молчаливого повышения прав.
 - [x] `scripts/status-stack.py` — read-only диагностика авторизованного MCP, bridge, heartbeat браузера, Chain2/Chain3 и конкретных причин блокировки. Проверяется `scripts/test_status_stack.py`.
+- [x] `scripts/chain2-triage.py` — read-only разбор ACTIVE по валидности handoff, факту сохранения сообщения и инцидентам. Никаких повторных отправок, фальшивых ACK и разрешений; тесты `scripts/test_chain2_triage.py`.
 
 ## Фактическая диагностика работающего экземпляра
 
