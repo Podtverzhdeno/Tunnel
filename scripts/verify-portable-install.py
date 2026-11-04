@@ -134,9 +134,54 @@ def clean_companion(tmp):
         "chain3_selected_mode":chain["selected_mode"],
         "owner_armed":chain["owner_armed"]}
 
+def check_powershell_install(tmp):
+    """Run actual PowerShell quickstart twice in a disposable Windows fixture."""
+    if os.name!="nt":return "skipped_non_windows"
+    installer=ROOT/"scripts"/"install-local.ps1"
+    check(installer.is_file(),"Installer missing")
+    fixture=tmp/"powershell-fixture"
+    shutil.copytree(ROOT/"Local-Workspace-Extensions"/"mcp-host-source",
+                    fixture/"Local-Workspace-Extensions"/"mcp-host-source",
+                    ignore=shutil.ignore_patterns("__pycache__","*.pyc","config.json",
+                                                  ".local-mcp-state"))
+    dest=fixture/"chat-launch-smoke-desktop-test"
+    dest.mkdir()
+    shutil.copytree(ROOT/"chat-launch-smoke-desktop-test"/"web-companion",
+                    dest/"web-companion",
+                    ignore=shutil.ignore_patterns("__pycache__","bridge-state",
+                                                  "bridge-config.json","*.pyc"))
+    shutil.copytree(ROOT/"chat-launch-smoke-desktop-test"/"web-extension",
+                    dest/"web-extension",
+                    ignore=shutil.ignore_patterns("bridge-config.json"))
+    scripts=fixture/"scripts"
+    scripts.mkdir()
+    shutil.copy2(installer,scripts/"install-local.ps1")
+    workspace=fixture/"projects"
+    workspace.mkdir()
+    cmd=["powershell.exe","-NoProfile","-NonInteractive",
+         "-ExecutionPolicy","Bypass","-File",
+         str(scripts/"install-local.ps1"),"-ProjectsPath",str(workspace)]
+    for _ in range(2):
+        completed=subprocess.run(cmd,cwd=fixture,stdin=subprocess.DEVNULL,
+                                 text=True,capture_output=True,timeout=40,
+                                 encoding="utf-8",errors="replace")
+        if completed.returncode:
+            raise AssertionError("PowerShell offline quickstart failed: "+
+                                 (completed.stderr or completed.stdout)[-500:])
+    host=json.loads((fixture/"Local-Workspace-Extensions"/"mcp-host-source"/
+                     "config.json").read_text(encoding="utf-8"))
+    check(len(host["roots"])==1,"Repeated installer duplicated MCP alias")
+    key=(dest/"web-companion"/"bridge-state"/"token").read_text("utf-8")
+    extension=json.loads((dest/"web-extension"/"bridge-config.json").read_text("utf-8"))
+    check(len(key)>=32 and extension["key"]==key,
+          "PowerShell installer bridge key mismatch")
+    return "passed_twice_idempotent"
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skip-secret-scan",action="store_true")
+    parser.add_argument("--test-powershell",action="store_true",
+                        help="Also invoke the Windows setup script twice in an isolated copy")
     args=parser.parse_args()
     if sys.version_info<(3,10):raise RuntimeError("Python >=3.10 is required")
     count=0 if args.skip_secret_scan else check_public_source()
@@ -145,7 +190,9 @@ def main():
         root=Path(directory)
         tools=clean_install(root)
         smoke=clean_companion(root)
+        powershell=check_powershell_install(root) if args.test_powershell else "not_requested"
     print(json.dumps({"ok":True,"source_files_scanned":count,
+                      "powershell_installer":powershell,
                       "local_mcp_tools":tools,
                       "smoke_app_tests":"passed",
                       "browser_bridge_setup":"passed",
