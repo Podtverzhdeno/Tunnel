@@ -64,7 +64,8 @@ def recovery_candidate(job_id):
             return False, "missing_evidence"
         if any(e.get("reason") in ("account_context_changed", "unexpected_close")
                or e.get("stage") in ("unknown", "report_disputed", "tab_preserved",
-                                      "tab_binding_disputed")
+                                      "tab_binding_disputed", "tab_identity_unverified",
+                                      "auth_context_changed")
                for e in events):
             return False, "needs_reconciliation"
         sent = next((i for i in range(len(events)-1,-1,-1)
@@ -318,6 +319,8 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= 256:
                 raise ValueError()
             data = json.loads(self.rfile.read(size).decode("utf-8"))
+            if type(data) is not dict:
+                raise ValueError()
             version, state = data.get("version"), data.get("state")
             count = data.get("windows")
             if not isinstance(version, str) or len(version) > 16 or any(
@@ -396,6 +399,8 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= 1024:
                 raise ValueError()
             data = json.loads(self.rfile.read(size).decode("utf-8"))
+            if type(data) is not dict:
+                raise ValueError()
             jid = data.get("id")
             stage = data.get("stage")
             reason = data.get("reason", "")
@@ -502,11 +507,24 @@ class Handler(BaseHTTPRequestHandler):
             active=ACTIVE / (jid+".json")
             completed=DONE / (jid+".json")
             if completed.exists():
-                saved=json.loads(completed.read_text(encoding="utf-8"))
+                try:
+                    saved=json.loads(completed.read_text(encoding="utf-8"))
+                except (OSError,ValueError,UnicodeError):
+                    self._reply(409, {"error":"completed_state_invalid"});return
+                if (type(saved) is not dict or saved.get("id")!=jid
+                    or saved.get("status") not in ("done","submitted","unknown")):
+                    self._reply(409, {"error":"completed_state_invalid"});return
                 self._reply(200, {"ok":True,"status":saved["status"],"duplicate":True});return
             if not active.exists():
                 self._reply(404, {"error":"not_active"});return
-            current=json.loads(active.read_text(encoding="utf-8"))
+            try:
+                current=json.loads(active.read_text(encoding="utf-8"))
+            except (OSError,ValueError,UnicodeError):
+                self._reply(409, {"error":"active_state_invalid"});return
+            if (type(current) is not dict or current.get("id")!=jid
+                or (current.get("role_metadata") is not None
+                    and type(current.get("role_metadata")) is not dict)):
+                self._reply(409, {"error":"active_state_invalid"});return
             campaign=(current.get("role_metadata") or {}).get("campaign_id")
             if campaign in ("chain2","chain3"):
                 if campaign=="chain2":

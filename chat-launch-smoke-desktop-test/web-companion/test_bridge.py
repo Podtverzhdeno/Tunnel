@@ -50,6 +50,80 @@ class ServerTests(unittest.TestCase):
     def put(self,jid,prompt="ping"):
         (self.queue/(jid+".json")).write_text(json.dumps({"id":jid,"prompt":prompt}),encoding="utf-8")
 
+    def test_heartbeat_rejects_non_object_json_without_disconnect(self):
+        # Malformed extension telemetry must return HTTP 400; the handler
+        # thread must not crash or record any unverified heartbeat.
+        for payload in ([], ["fake"], "polling", 3, True):
+            with self.subTest(payload=payload):
+                status, response = self.request(
+                    "/v1/heartbeat", "POST", payload
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(response, {"error": "invalid_heartbeat"})
+        self.assertFalse((self.diag / "extension.json").exists())
+
+    def test_event_rejects_non_object_json_without_disconnect(self):
+        # An extension bug or malformed caller must not tear down the TCP
+        # connection by triggering AttributeError on a JSON array/scalar.
+        for payload in ([], ["fake"], "tab_opening", 3, True):
+            with self.subTest(payload=payload):
+                status, response = self.request(
+                    "/v1/event", "POST", payload
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(response, {"error": "invalid_event"})
+        self.assertEqual(list(self.diag.iterdir()), [])
+
+    def test_corrupt_active_job_cannot_be_completed_or_acknowledged(self):
+        jid = "01234567-89ab-4cde-8901-000000000351"
+        active = self.active / (jid + ".json")
+        done = self.done / (jid + ".json")
+        invalid_cases = {
+            "json_list": "[]",
+            "truncated_json": "{",
+            "mismatched_id": json.dumps({
+                "id": "01234567-89ab-4cde-8901-000000000352"
+            }),
+            "invalid_role_metadata": json.dumps({
+                "id": jid, "role_metadata": ["untrusted"]
+            }),
+        }
+        for reason, content in invalid_cases.items():
+            with self.subTest(reason=reason):
+                done.unlink(missing_ok=True)
+                active.write_text(content, encoding="utf-8")
+                status, result = self.request(
+                    "/v1/result", "POST", {"id": jid, "status": "unknown"}
+                )
+                self.assertEqual(status, 409)
+                self.assertEqual(result, {"error": "active_state_invalid"})
+                self.assertEqual(active.read_text(encoding="utf-8"), content)
+                self.assertFalse(done.exists())
+
+    def test_corrupt_completed_job_is_not_a_valid_duplicate_receipt(self):
+        jid = "01234567-89ab-4cde-8901-000000000353"
+        done = self.done / (jid + ".json")
+        invalid_cases = {
+            "json_list": "[]",
+            "truncated_json": "{",
+            "mismatched_id": json.dumps({
+                "id": "01234567-89ab-4cde-8901-000000000354",
+                "status": "done"
+            }),
+            "unknown_state": json.dumps({
+                "id": jid, "status": "forged_success"
+            }),
+        }
+        for reason, content in invalid_cases.items():
+            with self.subTest(reason=reason):
+                done.write_text(content, encoding="utf-8")
+                status, result = self.request(
+                    "/v1/result", "POST", {"id": jid, "status": "unknown"}
+                )
+                self.assertEqual(status, 409)
+                self.assertEqual(result, {"error": "completed_state_invalid"})
+                self.assertEqual(done.read_text(encoding="utf-8"), content)
+
     def test_result_url_strips_sensitive_query_parameters(self):
         jid="01234567-89ab-4cde-8901-000000000151"
         self.put(jid)
