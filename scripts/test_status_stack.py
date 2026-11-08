@@ -151,5 +151,63 @@ class StatusTests(unittest.TestCase):
                              {"status":"ready","port":18763})
 
 
+    def test_malformed_chain2_preview_fails_closed(self):
+        valid_states={"done":0,"active":0}
+        bad_previews=(
+            {"ok":True,"armed":True,"held":False,"ready":"5","states":valid_states},
+            {"ok":True,"armed":True,"held":False,"ready":5,"states":[]},
+            {"ok":True,"armed":True,"held":"false","ready":5,"states":valid_states},
+            {"ok":True,"armed":True,"held":False,"ready":True,"states":valid_states},
+            {"ok":True,"armed":True,"held":False,"ready":5,
+             "states":{"done":0,"active":-1}},
+        )
+        for bad in bad_previews:
+            def preview(path):
+                return bad if path.name=="chain_campaign.py" else {"ok":False}
+            with (self.subTest(bad=bad),
+                  patch.object(status,"_run_preview",side_effect=preview),
+                  patch.object(status,"_chain2_triage_status",
+                               return_value={"status":"no_active_jobs"}),
+                  patch.object(status,"_mcp_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_bridge_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_extension_status",return_value={"status":"stale"})):
+                result=status.summary(self.root)
+            self.assertEqual(result["chain2"]["status"],"preview_invalid")
+            self.assertNotEqual(result["chain2"]["status"],"ready")
+            self.assertFalse(result["full_autonomous_ready"])
+
+    def test_chain3_requires_explicit_validated_readiness_facts(self):
+        chain2={"ok":True,"armed":False,"held":False,"ready":0,
+                "states":{"done":0,"active":0}}
+        base={"ok":True,"mode":"READ_ONLY","no_jobs_created":True,
+              "selected_mode":"sandbox","effective_mode":"sandbox",
+              "trusted_host_verified":False,"owner_armed":True,
+              "chain2_fully_accepted":True,"admission_held":False}
+        variants=(
+            ({}, "ready_for_admission"),
+            ({"effective_mode":"unexpected"}, "blocked"),
+            ({"selected_mode":"trusted","effective_mode":"trusted",
+              "trusted_host_verified":False}, "blocked"),
+            ({"admission_held":"false"}, "blocked"),
+            ({"no_jobs_created":None}, "blocked"),
+            ({"mode":"WRITE"}, "blocked"),
+            ({"chain2_fully_accepted":1}, "blocked"),
+        )
+        for changes, expected in variants:
+            chain3={**base,**changes}
+            def preview(path):
+                return chain2 if path.name=="chain_campaign.py" else chain3
+            with (self.subTest(changes=changes),
+                  patch.object(status,"_run_preview",side_effect=preview),
+                  patch.object(status,"_chain2_triage_status",
+                               return_value={"status":"no_active_jobs"}),
+                  patch.object(status,"_mcp_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_bridge_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_extension_status",return_value={"status":"stale"})):
+                result=status.summary(self.root)
+            self.assertEqual(result["chain3"]["status"],expected)
+            self.assertFalse(result["full_autonomous_ready"])
+
+
 if __name__=="__main__":
     unittest.main(verbosity=2)
