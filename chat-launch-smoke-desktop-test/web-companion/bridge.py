@@ -64,7 +64,8 @@ def recovery_candidate(job_id):
             return False, "missing_evidence"
         if any(e.get("reason") in ("account_context_changed", "unexpected_close")
                or e.get("stage") in ("unknown", "report_disputed", "tab_preserved",
-                                      "tab_binding_disputed")
+                                      "tab_binding_disputed", "tab_identity_unverified",
+                                      "auth_context_changed")
                for e in events):
             return False, "needs_reconciliation"
         sent = next((i for i in range(len(events)-1,-1,-1)
