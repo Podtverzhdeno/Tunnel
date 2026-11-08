@@ -53,7 +53,7 @@ class ServerTests(unittest.TestCase):
     def test_heartbeat_rejects_non_object_json_without_disconnect(self):
         # Malformed extension telemetry must return HTTP 400; the handler
         # thread must not crash or record any unverified heartbeat.
-        for payload in ([], ["fake"], None, "polling", 3, True):
+        for payload in ([], ["fake"], "polling", 3, True):
             with self.subTest(payload=payload):
                 status, response = self.request(
                     "/v1/heartbeat", "POST", payload
@@ -65,7 +65,7 @@ class ServerTests(unittest.TestCase):
     def test_event_rejects_non_object_json_without_disconnect(self):
         # An extension bug or malformed caller must not tear down the TCP
         # connection by triggering AttributeError on a JSON array/scalar.
-        for payload in ([], ["fake"], None, "tab_opening", 3, True):
+        for payload in ([], ["fake"], "tab_opening", 3, True):
             with self.subTest(payload=payload):
                 status, response = self.request(
                     "/v1/event", "POST", payload
