@@ -64,7 +64,8 @@ def recovery_candidate(job_id):
             return False, "missing_evidence"
         if any(e.get("reason") in ("account_context_changed", "unexpected_close")
                or e.get("stage") in ("unknown", "report_disputed", "tab_preserved",
-                                      "tab_binding_disputed")
+                                      "tab_binding_disputed", "tab_identity_unverified",
+                                      "auth_context_changed")
                for e in events):
             return False, "needs_reconciliation"
         sent = next((i for i in range(len(events)-1,-1,-1)
@@ -318,6 +319,8 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= 256:
                 raise ValueError()
             data = json.loads(self.rfile.read(size).decode("utf-8"))
+            if type(data) is not dict:
+                raise ValueError()
             version, state = data.get("version"), data.get("state")
             count = data.get("windows")
             if not isinstance(version, str) or len(version) > 16 or any(
@@ -396,6 +399,8 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= 1024:
                 raise ValueError()
             data = json.loads(self.rfile.read(size).decode("utf-8"))
+            if type(data) is not dict:
+                raise ValueError()
             jid = data.get("id")
             stage = data.get("stage")
             reason = data.get("reason", "")
