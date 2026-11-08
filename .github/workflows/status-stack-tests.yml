@@ -1,0 +1,35 @@
+name: Status stack diagnostic tests
+
+on:
+  pull_request:
+    paths:
+      - "scripts/status-stack.py"
+      - "scripts/test_status_stack.py"
+      - ".github/workflows/status-stack-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/status-stack.py"
+      - "scripts/test_status_stack.py"
+      - ".github/workflows/status-stack-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  status-stack:
+    name: Python stdlib tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Offline mocked status tests
+        run: python -m unittest discover -s scripts -p "test_status_stack.py" -v
