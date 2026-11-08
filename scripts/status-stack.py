@@ -114,7 +114,9 @@ def _mcp_status(root: Path,port: int):
     try:
         with urllib.request.urlopen(req,timeout=1.5) as response:
             data=json.load(response)
-        if data.get("result",{}).get("serverInfo",{}).get("name")=="Local Workspace MCP":
+        result=data.get("result") if isinstance(data,dict) else None
+        server_info=result.get("serverInfo") if isinstance(result,dict) else None
+        if isinstance(server_info,dict) and server_info.get("name")=="Local Workspace MCP":
             return {"status":"ready","auth_valid":True,"profile":"observer",
                     "port":port}
         return {"status":"unexpected_response","port":port}
@@ -145,8 +147,8 @@ def _bridge_status(root: Path,port: int):
     try:
         with urllib.request.urlopen(request,timeout=1.5) as response:
             payload=json.load(response)
-        return {"status":"ready" if payload.get("ok") is True else "invalid_health",
-                "port":port}
+        return {"status":"ready" if isinstance(payload,dict) and payload.get("ok") is True
+                else "invalid_health","port":port}
     except urllib.error.HTTPError as exc:
         return {"status":"auth_rejected" if exc.code in (401,403) else "http_error",
                 "http_status":exc.code,"port":port}
@@ -184,31 +186,55 @@ def summary(root: Path,mcp_port=8765,bridge_port=18763):
     chain2=_run_preview(controller/"chain_campaign.py")
     chain3=_run_preview(controller/"chain3_continuous.py")
     chain2_triage=_chain2_triage_status(root)
+    # The previews are child-process JSON, not an authority signal. Bad shapes
+    # must never crash status reporting or be interpreted as admission-ready.
+    states=chain2.get("states")
+    states=states if type(states) is dict else {}
+    ready=chain2.get("ready")
+    active=states.get("active")
+    done=states.get("done")
+    valid_chain2=(type(chain2.get("armed")) is bool
+                  and type(chain2.get("held")) is bool
+                  and type(ready) is int and ready>=0
+                  and type(active) is int and active>=0
+                  and type(done) is int and done>=0)
     if chain2.get("ok") is not True:
-        chain2_state=chain2.get("status","unavailable")
-    elif not chain2.get("armed"):
+        state=chain2.get("status")
+        chain2_state=state if type(state) is str else "unavailable"
+    elif not valid_chain2:
+        chain2_state="preview_invalid"
+    elif chain2["armed"] is False:
         chain2_state="not_owner_armed"
-    elif chain2.get("held"):
+    elif chain2["held"] is True:
         chain2_state="admission_held"
-    elif chain2.get("ready",0)>0:
+    elif ready>0:
         chain2_state="ready"
-    elif chain2.get("states",{}).get("active",0)>0:
+    elif active>0:
         chain2_state="blocked_active"
     else:
         chain2_state="waiting_or_blocked"
     chain2_view={"status":chain2_state,
-                 "done":chain2.get("states",{}).get("done"),
-                 "active":chain2.get("states",{}).get("active"),
-                 "ready":chain2.get("ready"),
-                 "owner_armed":chain2.get("armed")}
-    chain3_view={"status":("ready_for_admission" if chain3.get("ok")
-                   and chain3.get("owner_armed") and chain3.get("chain2_fully_accepted")
-                   and chain3.get("effective_mode")!="blocked"
-                   and not chain3.get("admission_held") else "blocked"),
-                 "selected_mode":chain3.get("selected_mode"),
-                 "effective_mode":chain3.get("effective_mode"),
-                 "owner_armed":chain3.get("owner_armed"),
-                 "chain2_fully_accepted":chain3.get("chain2_fully_accepted")}
+                 "done":done if type(done) is int and done>=0 else None,
+                 "active":active if type(active) is int and active>=0 else None,
+                 "ready":ready if type(ready) is int and ready>=0 else None,
+                 "owner_armed":chain2.get("armed") is True}
+    selected=chain3.get("selected_mode")
+    effective=chain3.get("effective_mode")
+    mode_consistent=((selected=="sandbox" and effective=="sandbox") or
+                     (selected=="trusted" and effective=="trusted"
+                      and chain3.get("trusted_host_verified") is True))
+    chain3_ready=(chain3.get("ok") is True
+                  and chain3.get("mode")=="READ_ONLY"
+                  and chain3.get("no_jobs_created") is True
+                  and chain3.get("owner_armed") is True
+                  and chain3.get("chain2_fully_accepted") is True
+                  and chain3.get("admission_held") is False
+                  and mode_consistent)
+    chain3_view={"status":"ready_for_admission" if chain3_ready else "blocked",
+                 "selected_mode":selected if type(selected) is str else None,
+                 "effective_mode":effective if type(effective) is str else None,
+                 "owner_armed":chain3.get("owner_armed") is True,
+                 "chain2_fully_accepted":chain3.get("chain2_fully_accepted") is True}
     actions=[]
     if mcp["status"] in ("local_auth_not_initialized","local_auth_invalid"):
         actions.append("Run: py -3 scripts/observer_auth.py init (inspect existing invalid files first)")
