@@ -50,6 +50,55 @@ class ServerTests(unittest.TestCase):
     def put(self,jid,prompt="ping"):
         (self.queue/(jid+".json")).write_text(json.dumps({"id":jid,"prompt":prompt}),encoding="utf-8")
 
+    def test_corrupt_active_job_cannot_be_completed_or_acknowledged(self):
+        jid = "01234567-89ab-4cde-8901-000000000351"
+        active = self.active / (jid + ".json")
+        done = self.done / (jid + ".json")
+        invalid_cases = {
+            "json_list": "[]",
+            "truncated_json": "{",
+            "mismatched_id": json.dumps({
+                "id": "01234567-89ab-4cde-8901-000000000352"
+            }),
+            "invalid_role_metadata": json.dumps({
+                "id": jid, "role_metadata": ["untrusted"]
+            }),
+        }
+        for reason, content in invalid_cases.items():
+            with self.subTest(reason=reason):
+                active.write_text(content, encoding="utf-8")
+                status, result = self.request(
+                    "/v1/result", "POST", {"id": jid, "status": "unknown"}
+                )
+                self.assertEqual(status, 409)
+                self.assertEqual(result, {"error": "active_state_invalid"})
+                self.assertEqual(active.read_text(encoding="utf-8"), content)
+                self.assertFalse(done.exists())
+
+    def test_corrupt_completed_job_is_not_a_valid_duplicate_receipt(self):
+        jid = "01234567-89ab-4cde-8901-000000000353"
+        done = self.done / (jid + ".json")
+        invalid_cases = {
+            "json_list": "[]",
+            "truncated_json": "{",
+            "mismatched_id": json.dumps({
+                "id": "01234567-89ab-4cde-8901-000000000354",
+                "status": "done"
+            }),
+            "unknown_state": json.dumps({
+                "id": jid, "status": "forged_success"
+            }),
+        }
+        for reason, content in invalid_cases.items():
+            with self.subTest(reason=reason):
+                done.write_text(content, encoding="utf-8")
+                status, result = self.request(
+                    "/v1/result", "POST", {"id": jid, "status": "unknown"}
+                )
+                self.assertEqual(status, 409)
+                self.assertEqual(result, {"error": "completed_state_invalid"})
+                self.assertEqual(done.read_text(encoding="utf-8"), content)
+
     def test_result_url_strips_sensitive_query_parameters(self):
         jid="01234567-89ab-4cde-8901-000000000151"
         self.put(jid)
