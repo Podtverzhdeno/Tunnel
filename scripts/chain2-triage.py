@@ -82,6 +82,7 @@ def classify(doc):
         handoff=job.get("handoff_exists") is True
         valid=job.get("handoff_valid") is True
         invalid=handoff and job.get("handoff_valid") is False
+        request_status=job.get("request_valid")
         # No automation can infer a missing browser send from silence.
         if alerts or (parent and not saved):
             category="browser_delivery_uncertain"
@@ -89,10 +90,10 @@ def classify(doc):
         elif invalid:
             category="handoff_invalid"
             action="Repair or independently verify the handoff artifact; do not mint a successor"
-        elif valid and not job.get("request_valid"):
+        elif handoff and valid and request_status is False:
             category="handoff_ready_for_role_review"
             action="Parent role verifies handoff and requests successor in its authorized turn"
-        elif job.get("request_valid"):
+        elif handoff and valid and request_status is True:
             category="handoff_request_pending_ack"
             action="Check report ACK/DONE; never duplicate the immutable handoff request"
         else:
@@ -109,7 +110,7 @@ def classify(doc):
             "incident_recorded":bool(alerts),
             "handoff_exists":handoff,
             "handoff_valid":job.get("handoff_valid") if handoff else None,
-            "handoff_request_valid":job.get("request_valid") is True,
+            "handoff_request_valid":handoff and valid and request_status is True,
             "action":action,
         })
     rows.sort(key=lambda x:(x["category"],x["ticket"],x["job_id"]))
