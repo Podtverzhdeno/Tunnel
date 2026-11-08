@@ -66,6 +66,7 @@ class ServerTests(unittest.TestCase):
         }
         for reason, content in invalid_cases.items():
             with self.subTest(reason=reason):
+                done.unlink(missing_ok=True)
                 active.write_text(content, encoding="utf-8")
                 status, result = self.request(
                     "/v1/result", "POST", {"id": jid, "status": "unknown"}
