@@ -114,7 +114,9 @@ def _mcp_status(root: Path,port: int):
     try:
         with urllib.request.urlopen(req,timeout=1.5) as response:
             data=json.load(response)
-        if data.get("result",{}).get("serverInfo",{}).get("name")=="Local Workspace MCP":
+        result=data.get("result") if isinstance(data,dict) else None
+        server_info=result.get("serverInfo") if isinstance(result,dict) else None
+        if isinstance(server_info,dict) and server_info.get("name")=="Local Workspace MCP":
             return {"status":"ready","auth_valid":True,"profile":"observer",
                     "port":port}
         return {"status":"unexpected_response","port":port}
@@ -145,8 +147,8 @@ def _bridge_status(root: Path,port: int):
     try:
         with urllib.request.urlopen(request,timeout=1.5) as response:
             payload=json.load(response)
-        return {"status":"ready" if payload.get("ok") is True else "invalid_health",
-                "port":port}
+        return {"status":"ready" if isinstance(payload,dict) and payload.get("ok") is True
+                else "invalid_health","port":port}
     except urllib.error.HTTPError as exc:
         return {"status":"auth_rejected" if exc.code in (401,403) else "http_error",
                 "http_status":exc.code,"port":port}
