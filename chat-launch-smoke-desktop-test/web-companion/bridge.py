@@ -507,11 +507,24 @@ class Handler(BaseHTTPRequestHandler):
             active=ACTIVE / (jid+".json")
             completed=DONE / (jid+".json")
             if completed.exists():
-                saved=json.loads(completed.read_text(encoding="utf-8"))
+                try:
+                    saved=json.loads(completed.read_text(encoding="utf-8"))
+                except (OSError,ValueError,UnicodeError):
+                    self._reply(409, {"error":"completed_state_invalid"});return
+                if (type(saved) is not dict or saved.get("id")!=jid
+                    or saved.get("status") not in ("done","submitted","unknown")):
+                    self._reply(409, {"error":"completed_state_invalid"});return
                 self._reply(200, {"ok":True,"status":saved["status"],"duplicate":True});return
             if not active.exists():
                 self._reply(404, {"error":"not_active"});return
-            current=json.loads(active.read_text(encoding="utf-8"))
+            try:
+                current=json.loads(active.read_text(encoding="utf-8"))
+            except (OSError,ValueError,UnicodeError):
+                self._reply(409, {"error":"active_state_invalid"});return
+            if (type(current) is not dict or current.get("id")!=jid
+                or (current.get("role_metadata") is not None
+                    and type(current.get("role_metadata")) is not dict)):
+                self._reply(409, {"error":"active_state_invalid"});return
             campaign=(current.get("role_metadata") or {}).get("campaign_id")
             if campaign in ("chain2","chain3"):
                 if campaign=="chain2":
