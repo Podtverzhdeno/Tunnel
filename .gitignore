@@ -33,3 +33,19 @@
 **/extensions-state/
 **/.secrets/
 **/local-run-logs/
+
+# Hermes private runtime (templates must live outside these directories)
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.db-wal
+**/*.db-shm
+Hermes-WebGPT/profile/
+Hermes-WebGPT/logs/
+Hermes-WebGPT/runtime/
+Hermes-WebGPT/*config*.yaml
+Hermes-WebGPT/*config*.yml
+Hermes-WebGPT/*config*.json
+Hermes-WebGPT/*token*
+Hermes-WebGPT/*secret*
+
