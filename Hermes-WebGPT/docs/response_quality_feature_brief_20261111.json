@@ -1,0 +1,196 @@
+{
+  "project": "Hermes-WebGPT",
+  "change": "improve-hermes-browser-readiness-and-source-continuity",
+  "title": "Hermes: готовность браузерного инструмента, сохранение источников между ходами и наблюдение задержек",
+  "problem": "На Windows Hermes выбирал POSIX npm shim вместо установленного native exe (WinError 193), затем не находил Chrome при наличии Edge. Публичные RSS-доказательства исчезали после первого tool turn, провоцируя лишний поиск. Существующий queue_monitor скрывает конкретные новые ошибки как other и не отделяет целевую скорость от утверждения о зависании.",
+  "outcome": "Проверенный браузерный launcher без shell и загрузки пакетов; доступные публичные источники сохраняются на ограниченное время после инструментов без повторного fetch; существующий read-only монитор выдаёт точные безопасные причины и превышение целевого времени, не заявляя Telegram delivery по Relay done.",
+  "constraints": [
+    "Расширять существующие Hermes, Web Companion и queue_monitor; не создавать второй транспорт, Gateway или ledger вместо уже планируемого stabilize-hermes-tool-fallback-and-evidence.",
+    "Сохранять исходные system/developer/user/tool сообщения, tool_choice, схемы и запрет повтора неизвестного Send.",
+    "Не устанавливать браузеры или плагины автоматически; использовать существующий native agent-browser и изолированный профиль существующего браузера.",
+    "Уважать явный AGENT_BROWSER_EXECUTABLE_PATH и пользовательскую вкладку/профиль; никакого shell=True и подстановок аргументов.",
+    "Каноническое создание OpenSpec/SDD требует штатного foreground owner approval точного плана; до него код и результаты — отдельный проверяемый patch, а не принятие канонической спецификации."
+  ],
+  "capabilities": [
+    {
+      "name": "windows-browser-tool-readiness",
+      "summary": "Проверяемая готовность именно браузерного инструмента Hermes, отдельно от транспорта ChatGPT.",
+      "requirements": [
+        {
+          "name": "Native launcher selection",
+          "shall": "The system SHALL replace only the known repository-local npm shim on Windows x64 with the verified installed native agent-browser PE executable, without invoking a shell or changing user arguments.",
+          "scenarios": [
+            {
+              "name": "Known Windows shim",
+              "given": "Hermes resolves its local POSIX npm shim and the native package executable is present",
+              "when": "the project Gateway bootstrap starts",
+              "then": "the existing resolver uses one native executable argv item and records the actual Gateway PID and loaded helper hashes"
+            },
+            {
+              "name": "Foreign or invalid launcher",
+              "given": "the resolver points outside the known package or the native PE/package identity is invalid",
+              "when": "readiness is evaluated",
+              "then": "no executable replacement or arbitrary installation occurs"
+            }
+          ]
+        },
+        {
+          "name": "Existing browser fallback",
+          "shall": "The system SHALL preserve an explicit browser executable setting and otherwise select an existing verified Chrome or Edge executable without touching a user profile.",
+          "scenarios": [
+            {
+              "name": "Edge installed",
+              "given": "Chrome discovery fails and Edge is present in a known Windows installation location",
+              "when": "the browser tool is bootstrapped",
+              "then": "AGENT_BROWSER_EXECUTABLE_PATH points to that existing executable and a controlled test uses its own session"
+            },
+            {
+              "name": "Explicit user choice",
+              "given": "AGENT_BROWSER_EXECUTABLE_PATH is explicitly set",
+              "when": "the compatibility helper runs",
+              "then": "the setting is preserved even if unavailable and no browser is silently installed"
+            }
+          ]
+        },
+        {
+          "name": "Truthful activation evidence",
+          "shall": "The system SHALL distinguish source installation, native CLI readiness, actual navigation, Gateway activation and Telegram delivery.",
+          "scenarios": [
+            {
+              "name": "Loaded build",
+              "given": "the Gateway was restarted during a verified idle window",
+              "when": "activation is reported",
+              "then": "runtime PID and helper hashes match the running Gateway and Telegram connection state is checked"
+            },
+            {
+              "name": "Offline-only evidence",
+              "given": "only unit tests or a CLI version probe succeeded",
+              "when": "status is presented",
+              "then": "live browser navigation and Telegram delivery remain explicitly unconfirmed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "followup-source-continuity",
+      "summary": "Ограниченный cache уже найденных публичных доказательств для следующих model-only ходов.",
+      "requirements": [
+        {
+          "name": "Bounded public evidence cache",
+          "shall": "The system SHALL retain at most twelve public evidence entries for at most 300 monotonic seconds, keyed by the exact latest user request hash without storing raw private user text in the cache.",
+          "scenarios": [
+            {
+              "name": "Same task tool followup",
+              "given": "public evidence was obtained on the initial user turn",
+              "when": "the same task returns a tool result within the TTL",
+              "then": "the model-only view reuses a defensive copy with evidence age and cached-no-network attribution"
+            },
+            {
+              "name": "Bound or expiry",
+              "given": "an entry expired, the monotonic clock moved backwards or the capacity was exceeded",
+              "when": "the cache is queried",
+              "then": "the stale or evicted entry is not reused and reads do not extend its lifetime"
+            }
+          ]
+        },
+        {
+          "name": "No extra fetch or fabricated evidence",
+          "shall": "The system SHALL perform no new source fetch on a tool-only followup cache miss and SHALL preserve source failures and headline-only provenance.",
+          "scenarios": [
+            {
+              "name": "Cache miss",
+              "given": "a tool followup has no matching evidence",
+              "when": "the model view is built",
+              "then": "no network collection is triggered and no evidence is invented"
+            },
+            {
+              "name": "Insufficient source data",
+              "given": "the original source collection returned no articles or timed out",
+              "when": "the evidence is reused",
+              "then": "the same limitation remains visible and no claim of a new successful search is added"
+            }
+          ]
+        },
+        {
+          "name": "Canonical request preservation",
+          "shall": "The system SHALL keep canonical messages, real tool results, tool schemas and tool choice unchanged when adding model-only evidence.",
+          "scenarios": [
+            {
+              "name": "User changes task",
+              "given": "a newer or different user message exists",
+              "when": "the model view is built",
+              "then": "the previous request's evidence is not reused"
+            },
+            {
+              "name": "Mutation attempt",
+              "given": "a caller mutates returned evidence",
+              "when": "a later model view is built",
+              "then": "the internal evidence cache and canonical request remain unchanged"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "response-quality-observation",
+      "summary": "Доработка существующего queue_monitor вместо второго сервиса: типы ошибок и явные временные цели.",
+      "requirements": [
+        {
+          "name": "Typed redacted failure categories",
+          "shall": "The existing read-only queue monitor SHALL preserve supported browser/bootstrap/draft failure codes while mapping untrusted unknown reasons to other.",
+          "scenarios": [
+            {
+              "name": "Known browser failure",
+              "given": "a new request is blocked by content_tab_not_ready or tab_create_unverified",
+              "when": "it is compared with the previous snapshot",
+              "then": "the precise known failure is reported as new without exposing user data"
+            },
+            {
+              "name": "Private reason text",
+              "given": "a reason contains arbitrary text, a URL or credentials",
+              "when": "a snapshot is emitted",
+              "then": "the value is replaced by other and never included verbatim"
+            }
+          ]
+        },
+        {
+          "name": "Explicit latency target",
+          "shall": "The existing monitor SHALL optionally report an active request exceeding a configured response-age target separately from a stale-state alarm, using creation age rather than claiming phase duration.",
+          "scenarios": [
+            {
+              "name": "Slow active request",
+              "given": "an active request exceeds the configured target but not the stale threshold",
+              "when": "the monitor runs",
+              "then": "it reports a latency-target warning without declaring the worker dead or changing the request"
+            },
+            {
+              "name": "Completed request",
+              "given": "a request is terminal",
+              "when": "the monitor runs",
+              "then": "its creation age is not treated as current active latency"
+            }
+          ]
+        },
+        {
+          "name": "Windowed inference outcome report",
+          "shall": "The existing monitor SHALL report recent inference outcomes using an explicitly defined request-creation window, with unknown ratios when no terminal observations exist and without equating done with Telegram ACK.",
+          "scenarios": [
+            {
+              "name": "Recent outcomes",
+              "given": "done, blocked and uncertain requests started inside the selected window",
+              "when": "the report is built",
+              "then": "it reports counts and the inference completion ratio with its scope and time basis"
+            },
+            {
+              "name": "No delivery receipt",
+              "given": "only queue metadata is available",
+              "when": "the report is built",
+              "then": "Telegram delivery, content correctness and p50/p95 phase latency remain unverified"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
