@@ -15,14 +15,14 @@ class QueueMonitorTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.db = Path(self.tmp.name) / 'queue ?# fixture.sqlite'
-        with sqlite3.connect(self.db) as db:
+        self.db = Path(self.tmp.name) / 'queue # fixture.sqlite'
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute('''CREATE TABLE requests (
                 id TEXT PRIMARY KEY, state TEXT, reason TEXT, created REAL,
                 payload TEXT, result TEXT, lease TEXT, saved_url TEXT)''')
 
     def add(self, ident='request-private', state='queued', reason=None, created=900):
-        with sqlite3.connect(self.db) as db:
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute('INSERT INTO requests VALUES (?,?,?,?,?,?,?,?)',
                        (ident, state, reason, created, 'PRIVATE_PAYLOAD',
                         'PRIVATE_REPLY', 'PRIVATE_LEASE', 'https://private.example/chat'))
@@ -78,7 +78,7 @@ class QueueMonitorTests(unittest.TestCase):
         self.assertIn('PRAGMA query_only=ON', statements)
 
     def test_committed_wal_rows_are_visible(self):
-        with sqlite3.connect(self.db) as writer:
+        with contextlib.closing(sqlite3.connect(self.db)) as writer, writer:
             writer.execute('PRAGMA journal_mode=WAL')
             writer.execute("INSERT INTO requests(id,state,created) VALUES ('wal-row','queued',900)")
             writer.commit()
@@ -101,7 +101,7 @@ class QueueMonitorTests(unittest.TestCase):
     def test_new_manual_input_on_existing_request_alerts(self):
         self.add(state='queued')
         old = self.report()
-        with sqlite3.connect(self.db) as db:
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute("UPDATE requests SET state='blocked',reason='web_manual_input'")
         alert = self.report(baseline=old)['alerts'][0]
         self.assertEqual(alert['counts'], {'blocked:manual_input': 1})
@@ -109,7 +109,7 @@ class QueueMonitorTests(unittest.TestCase):
     def test_failure_replacement_alerts_with_unchanged_total_failure_count(self):
         self.add(ident='old', state='blocked', reason='manual_input')
         old = self.report()
-        with sqlite3.connect(self.db) as db:
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute("UPDATE requests SET state='done', reason=NULL WHERE id='old'")
         self.add(ident='new', state='blocked', reason='manual_input')
         r = self.report(baseline=old)
@@ -125,7 +125,7 @@ class QueueMonitorTests(unittest.TestCase):
     def test_existing_failure_reason_change_alerts(self):
         self.add(state='blocked', reason='manual_input')
         old = self.report()
-        with sqlite3.connect(self.db) as db:
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute("UPDATE requests SET reason='request_timeout'")
         self.assertEqual(self.report(baseline=old)['alerts'][0]['counts'],
                          {'blocked:request_timeout': 1})
@@ -162,7 +162,7 @@ class QueueMonitorTests(unittest.TestCase):
     def test_database_replacement_requires_rebaseline(self):
         self.add()
         old = self.report()
-        with sqlite3.connect(self.db) as db:
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute('DELETE FROM requests')
         with self.assertRaisesRegex(monitor.ObservationError, 'baseline_queue_mismatch'):
             self.report(baseline=old)
@@ -170,7 +170,7 @@ class QueueMonitorTests(unittest.TestCase):
     def test_reused_id_with_different_creation_time_rejected(self):
         self.add()
         old = self.report()
-        with sqlite3.connect(self.db) as db:
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
             db.execute('UPDATE requests SET created=950')
         with self.assertRaisesRegex(monitor.ObservationError, 'baseline_queue_mismatch'):
             self.report(baseline=old)
