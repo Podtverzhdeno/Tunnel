@@ -38,8 +38,11 @@ interactive streams, change approval records, weaken the shared approval
 implementation or invoke lower-level writes to evade a pending/expired/denied
 decision. Do not mark an operation approved or completed without real evidence.
 
-The current specification broker supports per-plan local terminal approvals,
-not a persistent per-project allowlist. Ordinary project work should continue
-independently while such an operation is pending. Do not repeatedly regenerate
-requests or ask for ordinary project permission merely because one gated step
-is waiting.
+The specification broker supports per-plan terminal reviews and optional exact-project
+policies through `owner_project_approval.py`. A project policy takes effect only
+after the owner enables it in the real foreground terminal. Read its status;
+do not infer a live grant from this file. New policy-bound requests may proceed
+through the existing prepare/status/execute workflow with fresh preview hashes,
+expiry, revocation and no-replay guards. Old requests are not retroactively upgraded.
+Ordinary project work should continue independently while a gated operation is
+pending. Do not ask repeatedly for ordinary project permission.
