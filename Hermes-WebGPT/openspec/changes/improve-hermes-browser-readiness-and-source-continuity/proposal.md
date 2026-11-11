@@ -17,7 +17,12 @@
 None identified in the submitted brief.
 
 ## Impact
-Affected components and exact files: TBD during design review.
+Existing components: `hermes_windows_browser.py`, `gateway_bootstrap.py`,
+`browser_preflight.py`, `model_news_prefetch.py`, `monitoring/queue_monitor.py`
+and their focused tests. This increment applies reason catalog v3 only to the
+observer and maps the already implemented browser/cache behavior to FR-001–009.
+See `docs/RESPONSE_QUALITY_COMPLETION_20261111.md` for current evidence and
+remaining live FR-003 acceptance. No new transport or delivery ledger is created.
 
 ## Acceptance
 Each SHALL requirement must pass the linked WHEN/THEN scenario.

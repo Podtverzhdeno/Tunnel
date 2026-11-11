@@ -82,7 +82,7 @@ class QualityObservationTests(unittest.TestCase):
                 self.report(window_seconds=value)
 
     def test_invalid_catalog_versions_fail_closed(self):
-        for value in (True,[],3,'2'):
+        for value in (True,[],monitor.REASON_CATALOG_VERSION+1,'2'):
             old=self.report();old['snapshot']['reason_catalog_version']=value
             with self.subTest(value=value),self.assertRaises(monitor.ObservationError):
                 self.report(baseline=old)

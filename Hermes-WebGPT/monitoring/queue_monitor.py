@@ -19,7 +19,7 @@ LEGACY_REASONS = frozenset({
     'client_disconnected', 'claim_delivery_failed', 'relay_shutting_down',
     'worker_failed', 'terminal_state_changed', 'login_required', 'rate_limit',
 })
-REASONS = LEGACY_REASONS | frozenset({
+V2_REASONS = frozenset({
     'content_tab_not_ready', 'tab_create_unverified', 'tab_binding_unverified',
     'tab_binding_persist_failed', 'content_document_lost', 'content_handoff_timeout',
     'content_injection_failed', 'content_runner_not_started', 'content_injection_unverified',
@@ -30,7 +30,21 @@ REASONS = LEGACY_REASONS | frozenset({
     'invalid_reply_tools', 'invalid_reply_content', 'empty_reply', 'tools_disabled',
     'unoffered_or_invalid_tool', 'user_disabled',
 })
-REASON_CATALOG_VERSION = 2
+V3_REASONS = frozenset({
+    'user_message_not_confirmed', 'assistant_timeout',
+    'content_document_binding_unverified', 'launch_or_transport_unverified',
+    'draft_quarantine_unverified', 'recovery_archive_unverified',
+    'recovery_binding_missing', 'recovery_release_unverified', 'reply_unverified',
+    'saved_tab_unverified', 'orphan_tab_missing', 'turn_binding_missing',
+    'web_waiter_timeout', 'reasoning_control_not_unique', 'owner_cancelled_stale_unsent',
+})
+REASON_CATALOGS = {
+    1: LEGACY_REASONS,
+    2: LEGACY_REASONS | V2_REASONS,
+    3: LEGACY_REASONS | V2_REASONS | V3_REASONS,
+}
+REASON_CATALOG_VERSION = 3
+REASONS = REASON_CATALOGS[REASON_CATALOG_VERSION]
 
 
 class ObservationError(Exception):
@@ -48,6 +62,8 @@ def reason_code(value):
         return 'none'
     if not isinstance(value, str):
         return 'other'
+    if value in REASONS:
+        return value
     value = value.removeprefix('web_')
     return value if value in REASONS else 'other'
 
@@ -102,7 +118,8 @@ def baseline_records(baseline, now):
     snapshot = baseline.get('snapshot', baseline)
     if not isinstance(snapshot, dict) or snapshot.get('version') != 1:
         raise ObservationError('invalid_baseline')
-    if type(snapshot.get('reason_catalog_version', 1)) is not int or snapshot.get('reason_catalog_version', 1) not in (1, 2):
+    catalog = snapshot.get('reason_catalog_version', 1)
+    if type(catalog) is not int or catalog not in REASON_CATALOGS:
         raise ObservationError('invalid_baseline')
     observed = timestamp(snapshot.get('observed_at'))
     if observed > now:
@@ -118,7 +135,7 @@ def baseline_records(baseline, now):
         if (not isinstance(key, str) or len(key) != 64 or
                 any(c not in '0123456789abcdef' for c in key) or key in result or
                 not isinstance(state, str) or state not in STATES or
-                not isinstance(reason, str) or reason not in REASONS | {'none', 'other'}):
+                not isinstance(reason, str) or reason not in REASON_CATALOGS[catalog] | {'none', 'other'}):
             raise ObservationError('invalid_baseline')
         created = timestamp(row.get('created'))
         if created > observed:
@@ -160,7 +177,7 @@ def observe(db_path, baseline=None, now=None, stale_seconds=600, max_rows=10000,
         old = previous.get(row['key']) if previous is not None else None
         reason_refined = (old is not None and old_catalog < REASON_CATALOG_VERSION and
                           old['state'] == state and old['reason'] == 'other' and
-                          row['reason'] in REASONS - LEGACY_REASONS)
+                          row['reason'] in REASONS - REASON_CATALOGS[old_catalog])
         if reason_refined:
             code = state + ':' + row['reason']
             refined[code] = refined.get(code, 0) + 1
