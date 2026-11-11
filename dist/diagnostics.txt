@@ -1,0 +1,17 @@
+Portable migration diagnostics (2026-11-11)
+Source: connected projects workspace; staged installer + current code snapshot.
+Python: Python 3.14.10
+Node.js: v24.14.0
+npm: unavailable
+Archive: Tunnel-Portable.zip
+SHA256: dcc9ccb9b7419746ae3fde6f6120af74d6870dacf53043413112c8c6cf7513a9
+File count: 3348
+Uncompressed bytes: 26662997
+Archive bytes: 10428435
+Packaging exclusions (counts only): {"Local-Workspace-Extensions_copied": 1256, "base_files": 175, "chat-launch-smoke-desktop-test_copied": 1312, "excluded_directory_or_hidden": 7, "excluded_nonportable_extension": 40659, "excluded_runtime_config_or_secret": 53, "excluded_secret_pattern": 12, "excluded_sensitive_filename": 42, "excluded_unreviewed_json": 966, "web-companion_copied": 603}
+Current Tunnel-Portable.zip: isolated offline clean-install PASS (2026-11-11); local MCP 28 tools, auth 200/401, browser bridge PASS; no live browser calls.
+Installed base extension: 0.8.5 (verified). Newer portable source snapshot extension: 0.9.7 (NOT installed automatically).
+Staging status-stack (not the live connected MCP): {"ok": true, "read_only": true, "mcp": {"status": "local_auth_not_initialized"}, "bridge": {"status": "not_running", "port": 18763}, "extension": {"status": "stale", "heartbeat_age_seconds": 63404, "version": "0.6.6"}, "tunnel": {"status": "not_checked", "note": "Run tunnel-client doctor with owner's profile"}, "full_autonomous_ready": false}
+MCP source launch: Python manage.py serve from Local-Workspace-Extensions/mcp-host-source; local HTTP.
+Tunnel binding on target: NOT TESTED; create new target-local credentials and tunnel ID.
+Excluded: .env, tokens, cookies, private keys, auth states, browser profiles, runtime databases.
