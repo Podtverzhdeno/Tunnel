@@ -19,6 +19,7 @@ Windows-установка Hermes и архивы от 4 ноября этим �
 - [**Tunnel-Portable.zip**](dist/Tunnel-Portable.zip) — безопасно отфильтрованная переносимая копия исходников и проверенного базового установщика (10,4 МБ).
 - [**diagnostics.txt**](dist/diagnostics.txt) — версии, контрольная сумма и результаты диагностики.
 - [**Tunnel-Portable.sha256**](dist/Tunnel-Portable.sha256) — SHA-256 для проверки целостности перед распаковкой.
+- [**Отчёт о повторной проверке**](docs/PORTABLE_QA_20261111.md) — что действительно проверено, а что требует живого подключения к целевому ПК.
 
 Важно: базовое расширение в архиве — **0.8.5**, обновлённые исходники **0.9.7** хранятся отдельно в `migration-snapshot/` и автоматически не устанавливаются. Ключи и пользовательские профили не входят в архив. Это **публичный репозиторий** — никогда не публикуйте рабочие токены, cookies, `.env` или конфигурацию браузера.
 
@@ -28,7 +29,7 @@ Windows-установка Hermes и архивы от 4 ноября этим �
 
 | Архив | Что внутри |
 |---|---|
-| [Tunnel-Complete-Windows.zip](dist/Tunnel-Complete-Windows.zip) | **Рекомендуется.** Вся система, MCP, два приложения, расширение, исходники Chain2/Chain3 и установка |
+| [Tunnel-Complete-Windows.zip](dist/Tunnel-Complete-Windows.zip) | Архивная базовая сборка от 04.11.2026. Для нового ПК **предпочитайте [Tunnel-Portable.zip](dist/Tunnel-Portable.zip)** и новую инструкцию |
 | [Local-Workspace-MCP.zip](dist/Local-Workspace-MCP.zip) | Local Workspace MCP и локальная авторизация |
 | [New-Chat-Smoke-Test.zip](dist/New-Chat-Smoke-Test.zip) | Исходники второго MCP-приложения с `plugin.json` и `mcp.json` |
 | [Web-Companion-Extension.zip](dist/Web-Companion-Extension.zip) | Расширение Chromium и локальный bridge |

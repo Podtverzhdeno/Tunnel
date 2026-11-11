@@ -6,10 +6,16 @@
 
 > **Важное различие:** `Tunnel-Portable.zip` включает **проверенную базовую установку** (Web Companion 0.8.5) и отдельно **отложенный снимок более свежих исходников** (в том числе 0.9.7) внутри `Tunnel/migration-snapshot/`. Новые исходники **не подменяют установленные автоматически**: они могут иметь другие зависимости и требуют индивидуальных тестов. Перенос кода не означает перенос работающей авторизации, Windows-служб и пользовательских прав.
 
+## Проверка прав до скачивания
+
+**Сначала убедитесь, что ваш аккаунт действительно позволяет создавать пользовательские MCP-подключения.** По [актуальной справке OpenAI](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt), полный custom MCP доступен Business и Enterprise/Edu (для Business — администратору/владельцу; для Enterprise/Edu — также авторизованным участникам по RBAC), а в Pro есть ограничение на read/fetch. Для обычного Plus право самостоятельно создавать custom MCP **не подтверждено этой документацией**; наличие ранее подключённого плагина или локального MCP на старом ПК не доказывает, что новый аккаунт/рабочее пространство позволит создать соединение. Проверьте **ChatGPT → Plugins → + → Add custom MCP server** до установки. Если пункт недоступен, остановитесь: перенос исходников не исправит ограничение аккаунта.
+
+В настройках туннеля проверьте также **ассоциацию с нужным ChatGPT workspace**: наличие Tunnel ID в OpenAI Platform само по себе не гарантирует, что его покажет ChatGPT. Нужны разрешения Tunnels Read + Use и у runtime key, и у оператора подключения.
+
 ## 0. Что взять из репозитория
 
-1. [`dist/Tunnel-Portable.zip`](../dist/Tunnel-Portable.zip) — основной ZIP для нового компьютера.
-2. [`dist/diagnostics.txt`](../dist/diagnostics.txt) — отчёт и контрольная SHA-256.
+1. [`dist/Tunnel-Portable.zip`](https://github.com/Podtverzhdeno/Tunnel/blob/main/dist/Tunnel-Portable.zip) — основной ZIP для нового компьютера.
+2. [`dist/diagnostics.txt`](https://github.com/Podtverzhdeno/Tunnel/blob/main/dist/diagnostics.txt) — отчёт и контрольная SHA-256.
 3. Этот документ — установка и проверка.
 
 Для прямого скачивания на GitHub откройте файл и нажмите **Download raw file**. Репозиторий публичный — **для скачивания токен GitHub не нужен**. Не клонируйте весь рабочий каталог старого ПК. На новом ПК используйте отдельную папку (например, `C:\Work\Tunnel`) и отдельную папку для документов, к которым MCP получит доступ.
@@ -20,7 +26,7 @@
 Get-FileHash "$env:USERPROFILE\Downloads\Tunnel-Portable.zip" -Algorithm SHA256
 ```
 
-Сравните значение с `SHA256:` из `diagnostics.txt`. При несовпадении не устанавливайте архив.
+Сравните значение с `SHA256:` из `diagnostics.txt` или с `dist/Tunnel-Portable.sha256` в GitHub. При несовпадении не устанавливайте архив. После распаковки **в первую очередь откройте этот же документ внутри ZIP**: `Tunnel\docs\TRANSFER_TO_NEW_PC_RU.md`. Не руководствуйтесь устаревшим руководством от 4 ноября, если оно противоречит этому файлу.
 
 ## 1. Что должно быть на новом ПК
 
@@ -38,9 +44,13 @@ Get-FileHash "$env:USERPROFILE\Downloads\Tunnel-Portable.zip" -Algorithm SHA256
 В PowerShell:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Work | Out-Null
-Expand-Archive -LiteralPath "$env:USERPROFILE\Downloads\Tunnel-Portable.zip" -DestinationPath C:\Work -Force
-Set-Location C:\Work\Tunnel
+$destination = "C:\Work"
+if (Test-Path "$destination\Tunnel") {
+    throw "Папка C:\Work\Tunnel уже существует. Не перезаписывайте её: выберите другой пустой каталог."
+}
+New-Item -ItemType Directory -Force $destination | Out-Null
+Expand-Archive -LiteralPath "$env:USERPROFILE\Downloads\Tunnel-Portable.zip" -DestinationPath $destination
+Set-Location "$destination\Tunnel"
 py -3 --version
 py -3 scripts\verify-portable-install.py
 ```
@@ -109,12 +119,21 @@ py -3 scripts\observer_auth.py serve --port 8765
 - [tunnel-client — актуальные релизы](https://github.com/openai/tunnel-client/releases/latest)
 - [tunnel-client — конфигурация](https://github.com/openai/tunnel-client/blob/master/docs/configuration.md)
 
-Скачайте официальный Windows `tunnel-client`, распакуйте его **на целевом ПК** и убедитесь, что `tunnel-client.exe` доступен в PATH. Проверьте:
+Скачайте **полный** (не `tunnel-client-runtime`) Windows ZIP с [официального выпуска](https://github.com/openai/tunnel-client/releases/latest): для стандартного Intel/AMD Windows выбирайте **windows-amd64**, для Windows ARM — **windows-arm64**. Полный бинарник нужен, потому что только он содержит команды `init`, `doctor` и `profiles`. Не скачивайте бинарники со сторонних сайтов. Сверьте хеш загруженного архива с `SHA256SUMS.txt` того же официального выпуска.
+
+Распакуйте **всю папку** (включая сопутствующие файлы), например в `C:\Tools\tunnel-client`. В новом окне PowerShell найдите `.exe` и добавьте его каталог в PATH **только на время этого окна**:
 
 ```powershell
+$client = Get-ChildItem "C:\Tools\tunnel-client" -Recurse -File -Filter "tunnel-client.exe" |
+    Select-Object -First 1
+if (-not $client) { throw "Полный tunnel-client.exe не найден. Проверьте архитектуру и тип скачанного ZIP." }
+$env:Path = "$($client.DirectoryName);$env:Path"
+tunnel-client --version
 tunnel-client help quickstart
 tunnel-client help samples
 ```
+
+Если `tunnel-client` **уже установлен и на этом ПК есть рабочий профиль**, не переустанавливайте и не запускайте `init` поверх него: сначала проверьте текущий профиль командой `doctor --explain` и сопоставьте Tunnel ID и локальный endpoint. Значение PATH, как и временный API key, не сохраняется между окнами PowerShell.
 
 Далее откройте **второе окно PowerShell**, введите свои данные **без сохранения ключа в файл**:
 
@@ -151,7 +170,7 @@ tunnel-client run --profile local-workspace
 
 Значение `CONTROL_PLANE_API_KEY` требуется **при каждом новом запуске** `tunnel-client`, если вы используете только временные переменные PowerShell. Не сохраняйте ключ в обычный профиль PowerShell, командную историю, репозиторий или постоянные системные переменные без осознанной политики хранения секретов.
 
-Успех: `doctor` не сообщает о недостающем ключе и туннеле; после `run` клиент показывает готовность и работу канала `main`. Оставьте его запущенным одновременно с MCP. Не открывайте порт 8765 в роутере.
+Успех: `doctor` не сообщает о недостающем ключе и туннеле; после `run` клиент показывает готовность и работу канала `main`. Оставьте его запущенным одновременно с MCP. Дополнительно проверьте **readiness**, а не только факт запущенного процесса: откройте локальную служебную страницу `/ui` или `/readyz` на адресе health listener из профиля/логов `tunnel-client` (часто `http://127.0.0.1:8080/readyz`, но порт может отличаться). Не открывайте порт 8765 в роутере.
 
 ## 7. Подключить MCP в ChatGPT
 
@@ -160,7 +179,7 @@ tunnel-client run --profile local-workspace
 1. Откройте **Plugins → + → Add custom MCP server** (формулировки могут отличаться).
 2. Имя: `Local Workspace`. Описание: `Локальные файлы и проекты через Secure MCP Tunnel`.
 3. **Connection → Tunnel** → выберите существующий туннель либо укажите его `tunnel_id`.
-4. Настройте аутентификацию в соответствии с параметрами подключения: локальный bearer уже обрабатывается `tunnel-client`, его **не нужно вставлять в ChatGPT**.
+4. В поле **Authentication** выберите **No authentication / None**, если этот вариант доступен: базовый observer MCP **не использует OAuth**, а свой локальный HTTP bearer туннельный клиент подставляет сам из `MCP_EXTRA_HEADERS` и `MCP_DISCOVERY_EXTRA_HEADERS`. Не вставляйте этот bearer в ChatGPT, не выбирайте OAuth без реально настроенного OAuth-сервера. Если интерфейс предлагает другую обязательную схему, проверьте совместимость подключения, прежде чем продолжать.
 5. Примите предупреждение о рисках, создайте plugin, изучите список инструментов.
 6. В тестовом чате вызовите `list_workspaces` и `list_directory`. Должен быть корень `projects`. Начните с read-only операций.
 
