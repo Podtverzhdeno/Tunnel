@@ -26,3 +26,14 @@
 5. **No E2E green status until actual delivery receipts exist.**
 
 Development remains unblocked by A4 production permission checks. No production claim.
+
+## Дополнительная сверка источника — 14.11.2026 (актуально)
+
+- У Яндекс Browser Default действительно зарегистрирован AutoPilot. Данные манифеста внутри Secure Preferences неполны; отсутствие поля `content_scripts` в этой записи **не доказывает** отсутствие динамической инъекции.
+- A4 теперь читает **только `manifest.json`** из явно разрешённого локального каталога, указанного самой регистрацией, не просматривая личные файлы пользователя. На ПК найден исходный manifest **AutoPilot v0.8.1**; content_scripts в нём не объявлены. Но соответствие этому manifest текущего запущенного service worker не подтверждено.
+- Текущий наблюдаемый код `NO_DECLARED_CONTENT_SCRIPT`; `source_versions_observed=["0.8.1"]`, `registered_versions=[]`, `source_binding_to_running_worker_verified=false`. Bridge по-прежнему `AUTH_REQUIRED`, реальная отправка и ответ `false`. Источник: read-only job `6e11980a96fa442e8540c598ccdfc369`, rc0.
+- Focused diagnostic tests **12 total / 11 PASS / 1 SKIP**, job `171ff40ab7f9429caf525bca5b5cd2b6`.
+- Full Windows Quickstart tests **219 total / 210 PASS / 9 SKIP / 0 FAIL**, job `1f06ab90bd03445292e10f3f617c497a`.
+- А2 подтвердил архитектурный разрыв: A1 internal SEND_INTENT сейчас возвращает `TRUSTED_WEB_COMPANION_NOT_CONNECTED`; A2 external session API ещё не выдан. A1/A3 должны предоставить доверенный handoff к существующему Web Companion/Relay; очередной SAFE_DEMO оверлей **не решает** выполнение задач.
+- В DEV-мастере добавлено различение `REGISTRY_MANIFEST_METADATA_INCOMPLETE`, `NO_DECLARED_CONTENT_SCRIPT` и `SAFE_DEMO_NO_AUTOMATIC_SEND`.
+
