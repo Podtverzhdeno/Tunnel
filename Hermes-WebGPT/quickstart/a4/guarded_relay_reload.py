@@ -16,6 +16,8 @@ import hashlib
 import importlib.util
 import io
 import json
+import sqlite3
+import subprocess
 from pathlib import Path
 import sys
 import zipfile
@@ -114,7 +116,8 @@ def guarded_once(*, apply: bool = False) -> dict:
         report["reload_outcome"] = ("VERIFIED" if matching
                                     else "UNKNOWN_RECONCILE_MANUALLY")
     except (OSError, ValueError, RuntimeError, AssertionError, KeyError,
-            TypeError, AttributeError, zipfile.BadZipFile):
+            TypeError, AttributeError, zipfile.BadZipFile,
+            subprocess.SubprocessError, sqlite3.Error):
         # Could have failed before or after process termination. No retry.
         if report["reload_attempted"]:
             report["reload_outcome"] = "UNKNOWN_RECONCILE_MANUALLY"
@@ -129,4 +132,9 @@ if __name__ == "__main__":
     options = parser.parse_args()
     result = guarded_once(apply=options.apply)
     print(json.dumps(result, ensure_ascii=False))
-    raise SystemExit(0 if result["reload_outcome"] in ("READY_ONLY", "VERIFIED") else 2)
+    no_reload_needed = (
+        result["preflight"] == "NOT_REQUIRED"
+        and result["reload_outcome"] == "NOT_ATTEMPTED"
+    )
+    raise SystemExit(0 if result["reload_outcome"] in ("READY_ONLY", "VERIFIED")
+                     or no_reload_needed else 2)
