@@ -96,20 +96,39 @@ def inspect_services(fetch=_health) -> dict[str, bool]:
     return result
 
 
+def inspect_local_assets(project: Path) -> dict[str, bool]:
+    """Source inventory only; do not run unsigned install scripts."""
+    root=project.resolve(strict=True)
+    host=root.parent/"Local-Workspace-Extensions"/"mcp-host-source"
+    return {
+        "relay_source": (root/"relay.py").is_file(),
+        "relay_launcher": (root/"start_bridge.py").is_file(),
+        "gateway_source": (root/"gateway_runner.py").is_file(),
+        "local_mcp_source": (host/"manage.py").is_file(),
+        "oneclick_launcher": (root/"quickstart"/"start.ps1").is_file(),
+        "a4_installer": (root/"Setup-Hermes-A4.cmd").is_file(),
+    }
+
+
 def preflight(config: dict[str, Any], *, project: Path, fetch=_health) -> dict[str, Any]:
     data = validate_settings(config, project=project)
     stages = inspect_services(fetch)
+    assets = inspect_local_assets(project)
+    blockers=["mcp_authorization_boundary_unverified",
+              "browser_extension_and_user_login_unverified",
+              "live_telegram_delivery_unverified"]
+    if not all(assets.values()):
+        blockers.append("required_source_components_missing")
     return {
         "ok": True,
         "settings_valid": True,
         "permission_mode": data["mode"],
         "workers": data["workers"],
         "services": stages,
+        "source_assets": assets,
         "browser_path_valid": True,
         "ready_for_live_start": False,
-        "blockers": ["mcp_authorization_boundary_unverified",
-                     "browser_extension_and_user_login_unverified",
-                     "live_telegram_delivery_unverified"],
+        "blockers": blockers,
     }
 
 
