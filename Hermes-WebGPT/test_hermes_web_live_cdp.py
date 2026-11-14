@@ -53,6 +53,9 @@ class Selector:
     async def input_value(self):
         return self.page.composer
 
+    async def get_attribute(self, name):
+        return None  # Existing fixture models a plain <textarea>.
+
     async def fill(self, text, timeout=None):
         self.page.composer = text
 
@@ -190,6 +193,49 @@ class LiveTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["outcome"], "blocked")
         self.assertEqual(self.queue.read(self.rid)["state"], "blocked")
 
+
+    async def test_ambiguous_send_keeps_chat_lock_across_workers(self):
+        from hermes_web_live_cdp import ChatSessionLease
+        page = Page(CHAT, self.rid, close_after=True)
+        result = await self.run_case([page])
+        self.assertEqual(result["outcome"], "uncertain")
+        lease = ChatSessionLease(self.journal, CHAT)
+        self.assertTrue(lease.path.is_file())
+        with self.assertRaisesRegex(LiveCDPFault, "chat_session_busy_or_unreconciled"):
+            with ChatSessionLease(self.journal, CHAT):
+                pass
+
+    async def test_success_releases_chat_lock(self):
+        from hermes_web_live_cdp import ChatSessionLease
+        page = Page(CHAT, self.rid)
+        result = await self.run_case([page])
+        self.assertEqual(result["outcome"], "done")
+        lease = ChatSessionLease(self.journal, CHAT)
+        self.assertFalse(lease.path.exists())
+        with ChatSessionLease(self.journal, CHAT):
+            self.assertTrue(lease.path.exists())
+        self.assertFalse(lease.path.exists())
+
+    async def test_empty_relay_poll_does_not_leave_chat_busy(self):
+        from hermes_web_live_cdp import ChatSessionLease
+        from hermes_cdp_relay_client import WorkerFault
+        # Simulate a transient idle queue, before any job is leased.
+        async def idle(_):
+            raise WorkerFault("relay_job_not_available")
+        with patch("hermes_web_live_cdp.get_one_job", side_effect=idle):
+            with self.assertRaises(WorkerFault):
+                await self.run_case([])
+        lease = ChatSessionLease(self.journal, CHAT)
+        self.assertFalse(lease.path.exists())
+
+    async def test_busy_chat_does_not_claim_relay_job(self):
+        from hermes_web_live_cdp import ChatSessionLease
+        with ChatSessionLease(self.journal, CHAT):
+            page = Page(CHAT, self.rid)
+            with self.assertRaisesRegex(LiveCDPFault, "chat_session_busy_or_unreconciled"):
+                await self.run_case([page])
+            self.assertEqual(page.clicks, 0)
+            self.assertEqual(self.queue.read(self.rid)["state"], "queued")
 
     async def test_intent_ack_loss_preserves_unknown_without_click(self):
         original = self.http.post
