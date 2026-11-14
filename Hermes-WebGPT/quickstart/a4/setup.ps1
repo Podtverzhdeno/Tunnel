@@ -19,7 +19,7 @@ if ($null -ne $screen -and $screen.WorkingArea.Height -gt 500) {
     $f.Height=[Math]::Max(500,[Math]::Min(825,$screen.WorkingArea.Height-55))
 }
 $f.AutoScroll=$true
-$f.AutoScrollMinSize=New-Object Drawing.Size(645,1000)
+$f.AutoScrollMinSize=New-Object Drawing.Size(645,1085)
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
     $a=New-Object Windows.Forms.Label
@@ -400,10 +400,29 @@ $devLaunch.Add_Click({
     }
 })
 $f.Controls.Add($devLaunch)
+$devHealth=New-Object Windows.Forms.Button
+$devHealth.Text='DEV: проверить работающие службы'
+$devHealth.Left=22;$devHealth.Top=932;$devHealth.Width=615;$devHealth.Height=34
+$devHealth.Add_Click({
+    try {
+        $python=Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $python) { throw 'Python не найден' }
+        $lines=& $python.Source -m quickstart.a4.dev_status --json
+        if ($LASTEXITCODE -ne 0) { throw 'Сервисы ещё не готовы' }
+        $report=($lines | Select-Object -Last 1) | ConvertFrom-Json
+        if ($report.local_ready -ne $true) {
+            throw 'Локальная готовность не подтверждена'
+        }
+        $status.Text='MCP/Tunnel/Relay/Gateway: OK. Telegram и ChatGPT E2E не проверены.'
+    } catch {
+        $status.Text='DEV: часть служб не готова. Проверьте консоль и health.'
+    }
+})
+$f.Controls.Add($devHealth)
 if ($SmokeTest) {
     if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
         -not $save.Enabled -or -not $recover.Enabled -or
-        -not $devLaunch.Enabled) {
+        -not $devLaunch.Enabled -or -not $devHealth.Enabled) {
         throw 'a4_gui_control_construction_failed'
     }
     $f.Dispose()
