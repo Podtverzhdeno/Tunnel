@@ -67,8 +67,8 @@ if (Test-Path -LiteralPath $configFile -PathType Leaf) {
         # Leave safe defaults; corrupted files never trigger a launch.
     }
 }
-$warning=L 'Выбор прав пока НЕ применяется к действующему MCP. Мастер блокирует запуск до подключения защищённого брокера инструментов.' 456 49
-$warning.ForeColor=[Drawing.Color]::DarkRed
+$warning=L 'DEV запуск доступен без ожидания защищённого MCP. В DEV выбранные здесь права не применяются к действующему MCP.' 456 49
+$warning.ForeColor=[Drawing.Color]::DarkOrange
 $status=L 'Выберите параметры, затем сохраните настройки.' 519 33
 function Secret([string]$value,[string]$name) {
     if ([string]::IsNullOrWhiteSpace($value)) { return }
