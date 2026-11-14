@@ -73,3 +73,11 @@ Guardrails: never run live installer, change MCP/Tunnel/cloud routes, overwrite 
 - New local files: `quickstart/a4/release_manager.py`, `test_release_manager.py`. Offline A4 release version staging and rollback only; not a complete in-place updater.
 - A4 1–10: 1 PARTIAL (clean clone missing components), 2 PARTIAL (no secured unified startup), 3 PARTIAL (GUI real click E2E passed, owner production acceptance pending), 4 PARTIAL (choice works, full broker unconnected), 5 PARTIAL (observer 6-tool read-only verified, full sandbox/remote isolation missing), 6 PARTIAL (GUI config not wired to orchestration workers), 7 PARTIAL (DPAPI synthetic tests pass, live secrets/log review missing), 8 PARTIAL (health checks, no Telegram E2E), 9 PARTIAL (versioned offline A4 update and rollback, not whole runtime), 10 NOT DONE (clean Win10/11 Yandex Telegram E2E + A5).
 - NEXT: implement a safe, complete source/dependency distribution and user-approved dedicated observer Tunnel routing; **do not** change production tunnel 8765, push owner-specific keys to Git, silently grant full access, or merge before independent A5.
+
+## A4 latest checkpoint — 2026-11-14 14:38 UTC
+
+- Added `extension_contract.py`, `test_extension_contract.py`, `BROWSER_RELEASE_GATE.md`: strict read-only Yandex MV3 intake. Manifest SHA equality never becomes actual production or user signoff.
+- Verified AutoPilot v0.8.5 candidate `demo_only=true`, `production_candidate=false`, job `efa0a15e007e49ffa928893913d0a484`. Do not install this as the required final AutoPilot.
+- Latest Windows Quickstart **170 total, 162 PASS, 8 SKIP, exit 0**, job `5297ede717074945836179ba5ae76da9`. All 8 skips must be reported, not counted as passes.
+- All new A4-owned implementation and QA handoff files pushed to Draft PR #6. Local source candidate ZIP was **not** published and still requires A5 privacy review.
+- A4 statuses unchanged in production terms: #3 GUI-click scope done; #1/#2/#4/#5/#6/#7/#8/#9 partial; #10 unaccepted. Remaining hard gates: approved deployable runtime + browser extension, owner-confirmed Tunnel, OS-enforced full-scope boundary, real clean Windows install and Telegram files/images E2E.
