@@ -146,8 +146,11 @@ def dispatch(request: Any) -> dict[str, Any] | None:
     if "id" not in request or isinstance(ident, (dict, list, bool)):
         return _error(None, -32600, "invalid_request")
     if method == "initialize":
-        requested = request.get("params", {}).get("protocolVersion", MCP_VERSION)
-        chosen = requested if requested in PROTOCOLS else MCP_VERSION
+        params = request.get("params", {})
+        if not isinstance(params, dict):
+            return _error(ident, -32602, "invalid_params")
+        requested = params.get("protocolVersion", MCP_VERSION)
+        chosen = requested if isinstance(requested, str) and requested in PROTOCOLS else MCP_VERSION
         return _result(ident, {
             "protocolVersion": chosen,
             "capabilities": {"tools": {"listChanged": False}},
