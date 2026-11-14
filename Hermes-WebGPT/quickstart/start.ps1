@@ -313,6 +313,28 @@ try {
     Say "Media Bridge выключен до авторизованного ChatGPT Web E2E."
     Say "Для первого запуска нового профиля нужна установка расширения и вход в ChatGPT Web."
     if ($DevMode) {
+        # Loaded Relay may be older than relay.py on disk.
+        # A mismatch is a warning, never an automatic restart/replay.
+        try {
+            $parityScript=Join-Path $Project "quickstart\a4\loaded_runtime_parity.py"
+            if (Test-Path -LiteralPath $parityScript -PathType Leaf) {
+                $parityLines=& $pythonExe $parityScript
+                if ($LASTEXITCODE -eq 0) {
+                    $parity=($parityLines | Select-Object -Last 1) | ConvertFrom-Json
+                    if ($parity.status -eq "MATCH") {
+                        Say "DEV RELAY_BUILD_MATCH: загружена актуальная версия Relay."
+                    } elseif ($parity.status -eq "DISK_CHANGED_AFTER_RELAY_START") {
+                        Say "DEV RELAY_BUILD_STALE: Relay работает на старом коде; перезапуск нужен отдельно."
+                    } else {
+                        Say "DEV RELAY_BUILD_UNKNOWN: загруженный Relay не аттестован."
+                    }
+                }
+            }
+        } catch {
+            Say "DEV RELAY_BUILD_UNKNOWN: проверка пропущена, запуск не блокируется."
+        }
+    }
+    if ($DevMode) {
         # Diagnostic only; never changes Yandex profile or sends a task.
         # Readiness of MCP/Tunnel/Gateway is not chat prompt delivery.
         try {
