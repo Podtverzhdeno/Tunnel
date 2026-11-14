@@ -90,6 +90,32 @@ This is NOT a claim of live ChatGPT or Telegram end-to-end delivery.
   one Send, Relay done, mock reply delivered in same synthetic
   chat/topic 14. Zero actual Telegram Bot API messages.
 
+## ChatGPT rendered codeblock compatibility (continued)
+
+- RED witness `c34d049696f644329081e5d79b7a0f4b`, rc1:
+  request-bound JSON rendered as HTML `pre > code` with a `json`
+  language label and Copy button was rejected as `uncertain`.
+- Fix: the browser worker now accepts a SINGLE request-bound JSON
+  `pre code` block, only if the outer display contains no extra prose
+  beyond known code widget labels. Relay separately validates exact
+  request identity and tool calls; wait for Stop to disappear and JSON
+  to remain stable before terminal ACK.
+- Focused GREEN `62c531cbc24f4753b63746e561d534c8`,
+  rc0, 2/2 PASS. Additional regression refuses explanatory prose.
+- Full worker/sidecar/launcher tests job `1598b0fbd0b24360892091d4fa3470a9`,
+  rc0, **28/28 PASS**.
+- Actual Edge + Playwright + synthetic HTML / real ephemeral Relay:
+  job `875ea2072b52476182f210e343e9f323`, rc0,
+  **7/7 cases PASS**, including rendered HTML codeblock, literal fenced
+  JSON, streaming Stop control, login challenge and identity mismatch.
+- Installed Hermes **native Telegram SDK** synthetic supergroup ->
+  ephemeral Relay -> MCP stdio -> real Edge CDP (rendered codeblock) ->
+  Relay done -> mock Telegram SendResult to same chat / topic 14:
+  job `1c36046c28d542488e45248a54b47022`, rc0,
+  one Send, both processes rc0, same-topic mock ACK.
+- These tests never accessed a live ChatGPT account, sent real Telegram
+  messages or modified the owner's browser profile.
+
 ## Live environment readiness
 Read-only `python -m hermes_mcp_cdp_preflight`:
 job `1a0263c925d14f14bf228f29caacc6ee`, rc0.
