@@ -174,4 +174,26 @@ $recover.Add_Click({
     }
 })
 $f.Controls.Add($recover)
+$prepare=New-Object Windows.Forms.Button
+$prepare.Text='Подготовить защищённый MCP'
+$prepare.Left=339;$prepare.Top=600;$prepare.Width=299;$prepare.Height=32
+$prepare.Add_Click({
+    try {
+        if (-not (Test-Path -LiteralPath $configFile -PathType Leaf)) {
+            $status.Text='Сохраните настройки перед подготовкой MCP.'
+            return
+        }
+        $python=Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $python) { throw 'python_missing' }
+        $observerConfig=Join-Path $state 'a4-observer-config.json'
+        $res=& $python.Source -m quickstart.a4.observer_profile --project $project --settings $configFile --destination $observerConfig
+        if ($LASTEXITCODE -ne 0) { throw 'observer_blocked' }
+        $report=$res | Select-Object -Last 1 | ConvertFrom-Json
+        if ($report.ok -ne $true) { throw 'observer_blocked' }
+        $status.Text='Read-only MCP подготовлен. Подключение Tunnel ещё не выполнено.'
+    } catch {
+        $status.Text='MCP не подготовлен: проверьте режим «Только чтение» и пути.'
+    }
+})
+$f.Controls.Add($prepare)
 [void]$f.ShowDialog()
