@@ -284,9 +284,55 @@ try {
         else { $Started += "Gateway" }
         Say "Gateway: процесс проверен. Фактическая доставка Telegram требует E2E."
     }
+    if ($DevMode) {
+        # Reuse the existing A1-owned guarded Bridge launcher. It verifies
+        # source SHA, authenticated health, listener ownership and unsafe
+        # queued/active states before starting anything. No new queue here.
+        $bridgeGuard=Join-Path (Split-Path -Parent $Project) "Hermes-AutoPilot-Deploy-20261113\guarded_start_companion_bridge_v2.py"
+        if (Test-Path -LiteralPath $bridgeGuard -PathType Leaf) {
+            try {
+                $bridgeReply=& $pythonExe $bridgeGuard 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $bridgeResult=($bridgeReply | Select-Object -Last 1) | ConvertFrom-Json
+                    if ($bridgeResult.status -in @("ALREADY_RUNNING_VERIFIED","STARTED_VERIFIED")) {
+                        Say "Web Companion Bridge: WEB_COMPANION_BRIDGE_AUTH_OK (owned authenticated runtime)."
+                    } else {
+                        Say "Web Companion Bridge: состояние не подтверждено. Автоматическая отправка отключена."
+                    }
+                } else {
+                    Say "Web Companion Bridge: guarded start заблокирован, существующие очереди не изменены."
+                }
+            } catch {
+                Say "Web Companion Bridge: проверка недоступна, Hermes продолжает DEV."
+            }
+        } else {
+            Say "Web Companion Bridge: DEV bootstrap в соседнем проекте отсутствует."
+        }
+    }
     Say ("ГОТОВО. Запущено: " + ($Started -join ", ") + "; уже работало: " + ($Reused -join ", "))
     Say "Media Bridge выключен до авторизованного ChatGPT Web E2E."
     Say "Для первого запуска нового профиля нужна установка расширения и вход в ChatGPT Web."
+    if ($DevMode) {
+        # Diagnostic only; never changes Yandex profile or sends a task.
+        # Readiness of MCP/Tunnel/Gateway is not chat prompt delivery.
+        try {
+            $autopilotCheck=Join-Path $Project "quickstart\a4\yandex_handoff_readiness.py"
+            if (Test-Path -LiteralPath $autopilotCheck -PathType Leaf) {
+                $resultLines=& $pythonExe $autopilotCheck --json
+                if ($LASTEXITCODE -eq 0) {
+                    $extensionStatus=($resultLines | Select-Object -Last 1) | ConvertFrom-Json
+                    Say ("DEV Яндекс AutoPilot: " + [string]$extensionStatus.status)
+                    if ($extensionStatus.prompt_dispatched -ne $true) {
+                        Say "DEV AUTOPILOT_SEND_UNVERIFIED: ChatGPT prompt delivery not confirmed."
+                    }
+                } else {
+                    Say "DEV: диагностика AutoPilot недоступна, но запуск Hermes завершён."
+                }
+            }
+        } catch {
+            Say "DEV: диагностика AutoPilot не выполнена, запуск Hermes не блокируется."
+        }
+    }
     exit 0
 } catch {
     Say ("ОСТАНОВЛЕНО: " + $_.Exception.Message)
