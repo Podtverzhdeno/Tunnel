@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import sqlite3
+import subprocess
 from pathlib import Path
 
 from quickstart.a4.loaded_runtime_parity import compare_loaded, ROOT
@@ -47,7 +49,7 @@ def plan() -> dict:
         result["reconciliation"] = "READY_FOR_EXPLICIT_RELOAD"
         result["full_owner_and_idle_attestation"] = True
     except (OSError, ValueError, RuntimeError, AssertionError, AttributeError,
-            KeyError, TypeError):
+            KeyError, TypeError, subprocess.SubprocessError, sqlite3.Error):
         result["reconciliation"] = "PREFLIGHT_BLOCKED"
     return result
 
