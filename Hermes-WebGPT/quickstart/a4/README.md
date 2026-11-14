@@ -61,6 +61,15 @@ Next executable step: agree on a single authoritative MCP profile/port for mode 
 - Last full Windows Quickstart regression: **94 enumerated; 92 PASS, 2 SKIP**, rc=0, Local Workspace job `ab620be80b984926922314350519b7ea`. Two Windows symlink privilege tests remain skipped. No production services were interrupted.
 - The final live click-through in the actual Yandex Browser, owner-granted full access, clean clone dependency provisioning, release updater, independent A5 QA and Telegram↔ChatGPT↔Telegram delivery are still unverified. Keep PR **Draft**.
 
+
+## A4 runtime packaging candidate — 2026-11-14
+
+- `runtime_bundle.py` audits exactly the static 24-file Relay/Gateway Python dependency closure and builds a deterministic, strictly allowlisted **local-only** ZIP. It checks syntax, file hashes, size limits and common embedded-secret patterns. A clean audit is *not* a substitute for private-data and licensing review.
+- `runtime_stage.py` can stage an owner-pinned local ZIP into a separate per-user versioned folder and independently revalidate hashes after extraction. No service, process, Tunnel, browser, Telegram or permission mode is changed or started; no release is automatically activated. Tests cover concurrent locks, corrupted ZIPs, changed staged files, missing modules and approval gates.
+- Local candidate archive was built in the parent projects directory, intentionally **not published to GitHub**. Its ZIP SHA256 is `1d5455e424c2fda423e58edfc3d2e12aa8a13ee823fe9512465266599a841796`, manifest SHA256 `02a690fc1e49e9de4b4afe25238e96e9b20f327ef2419e3d311babdd703a6fba`. It contains user-owned code and needs A5 independent source/privacy review.
+- Latest complete Quickstart Windows regression: **150 tests total, 143 PASS, 7 SKIP, 0 FAIL**, return code 0, job `4e80ec665aeb44f2b4bd92fce7e4a7eb`.
+- See `A5_HANDOFF_20261114_RUNTIME.md` for the independent QA plan. This still does not prove first-run clean clone or end-to-end Telegram / Yandex ChatGPT.
+
 ## A4 continuation — 2026-11-14 14:13 UTC
 
 - Independent isolated **real Windows GUI click-path E2E** (`quickstart/a4/gui_winforms_acceptance.py`, kept in local QA workspace) passed all four cases: save read-only, confirm full-access selection, deny full access without persisting changes, and restore previous configuration, with two synthetic DPAPI secret files. Job `1a49deced8d84a4b9e348bf1ba292e24`, rc=0; production services and settings unchanged.
