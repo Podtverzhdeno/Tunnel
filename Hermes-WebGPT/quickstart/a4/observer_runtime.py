@@ -90,6 +90,51 @@ def audit_readonly(port: int, token: str, *, rpc=_call) -> dict:
             "port": port, "tunnel_connected": False}
 
 
+def _process_is_present(pid: int) -> bool | None:
+    """Tri-state Windows process check. Unknown is never treated as dead."""
+    if os.name != "nt" or type(pid) is not int or pid <= 0:
+        return None
+    script = (
+        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = " + str(pid)
+        + "' -ErrorAction Stop; if ($null -eq $p) { 'ABSENT' } else { 'PRESENT' }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True, timeout=8)
+        if result.returncode != 0:
+            return None
+        output = result.stdout.strip()
+        if output == "ABSENT":
+            return False
+        if output == "PRESENT":
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _archive_dead_receipt(state: Path, receipt: Path, prior: dict, *,
+                          is_present=_process_is_present) -> None:
+    """Recover a rebooted observer only after proving its old PID is absent.
+
+    Does not stop or mutate any running process. Preserves the old receipt for
+    independent reconciliation, never overwrites a previous archived receipt.
+    """
+    pid = prior.get("pid")
+    if type(pid) is not int or pid <= 0 or prior.get("profile") != "observer":
+        raise ObserverStartupError("invalid_observer_receipt")
+    if is_present(pid) is not False:
+        raise ObserverStartupError("old_observer_pid_still_present_or_unknown")
+    archive = state / ("a4-observer-launch.dead-" + str(pid) + ".json")
+    if archive.exists() or archive.is_symlink():
+        raise ObserverStartupError("observer_archive_collision")
+    # Ensure the receipt was not changed between verification and move.
+    if json.loads(receipt.read_text(encoding="utf-8")) != prior:
+        raise ObserverStartupError("observer_receipt_changed")
+    receipt.rename(archive)
+
+
 def _owned_observer_process(pid: int, port: int, config: Path) -> bool:
     """Verify a recorded PID by its Windows process command line, fail closed."""
     if os.name != "nt" or type(pid) is not int or pid <= 0:
@@ -144,11 +189,17 @@ def start(*, project: Path, settings_path: Path, state: Path,
                 or not _owned_observer_process(pid, port, config_path)):
             raise ObserverStartupError("observer_port_owned_by_unknown_process")
         return audit_readonly(port, token) | {"pid": pid, "reused": True}
-    if receipt.exists():
-        # The listener might be starting slowly or its PID reused. Never
-        # overwrite or replay a prior start without reconciling ownership.
-        raise ObserverStartupError("stale_observer_receipt_requires_reconciliation")
     prepare(settings, project, config_path)
+    if receipt.exists():
+        # Recover only a demonstrably dead previous observer. If the PID is
+        # alive, unknown, or its receipt is malformed, refuse a second start.
+        try:
+            prior = json.loads(receipt.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise ObserverStartupError("invalid_observer_receipt")
+        if prior.get("port") != port or prior.get("profile") != "observer":
+            raise ObserverStartupError("observer_receipt_mismatch")
+        _archive_dead_receipt(state, receipt, prior)
     stdout = state / "a4-observer.stdout.log"
     stderr = state / "a4-observer.stderr.log"
     if stdout.is_symlink() or stderr.is_symlink():
