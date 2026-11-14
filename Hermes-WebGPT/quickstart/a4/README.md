@@ -47,7 +47,7 @@ Local Windows result 2026-11-14: 78 enumerated; **76 PASS, 2 SKIP** (Windows sym
 | 6 | Paths/keys/browser/lanes | PARTIAL | Real settings→runtime wiring and 3-lane E2E |
 | 7 | Safe secrets | PARTIAL | Live process injection and secret-log inspection |
 | 8 | Readiness checks | PARTIAL | Full startup and Telegram delivery E2E |
-| 9 | Update & recovery | PARTIAL | Atomic release rollback under failure/stress |
+| 9 | Update & recovery | PARTIAL — GUI subtask DONE | SHA-pinned GUI bundle, real WinForms activation/rollback, fail-closed pointer and fault recovery all accepted; full Hermes Agent/MCP/Tunnel/Relay/Gateway runtime upgrade and live release acceptance still missing (see `GUI_RELEASE_UPDATE_ACCEPTANCE_20261114.md`) |
 | 10 | Real PC installation | NOT DONE | Independent Windows 10/11 + Yandex production E2E |
 
 Next executable step: agree on a single authoritative MCP profile/port for mode enforcement, implement that routed host boundary, then run real permission-denial tests without disturbing active 28-tool sessions. At no stage should an agent self-approve elevated OS permissions.
@@ -77,3 +77,10 @@ Next executable step: agree on a single authoritative MCP profile/port for mode 
 - Added **offline versioned release staging**: `quickstart/a4/release_manager.py`, with manifest SHA256 pin, per-file SHA256, path allowlist, cross-process update lock, atomic version pointer, previous-version preservation and explicit rollback. This affects only A4 release assets under a per-user state folder. It does **not** install or replace the full Hermes runtime, does not auto-fetch updates, and does not restart services. A trusted checksum must be supplied by the publisher/owner through a separate trusted channel.
 - 10 focused release tests: **9 PASS / 1 SKIP** (Windows symlink privilege), job `a1093d15177a40cd8e993190e3c29ffb`. Full Windows Quickstart regression: **105 total / 101 PASS / 4 SKIP**, exit 0, job `3effb090fa884ced80124e2fdedf40b9`. Separate real GUI E2E PASSED.
 - Clean-clone distribution **still incomplete**: branch currently lacks `Hermes-WebGPT/gateway_runner.py` and `Hermes-WebGPT/start_bridge.py`; full one-click setup must fail closed rather than advertise readiness. No Cloud/Telegram E2E or full-access OS sandbox acceptance is claimed.
+
+## Browser extension release gating — 2026-11-14
+
+- `extension_contract.py` examines Yandex-compatible MV3 extension sources without installing them: required service worker/content scripts, allowlisted ChatGPT + loopback hosts, bounded permissions, no external update URL/connection or path traversal. A **hash match is not user approval**, and output never asserts the extension is installed or delivers ChatGPT messages.
+- Actual `Hermes-AutoPilot-Deploy-20261113/autopilot-v0.8.5-candidate` was inspected locally (job `efa0a15e007e49ffa928893913d0a484`): valid MV3 basic manifest, but `demo_only=true` and `production_candidate=false`. A1 must provide a real post-demo verified build.
+- Windows extension intake tests: **10 total, 9 PASS, 1 SKIP** (symlink privilege), job `7dcb39edd8474cfbb73f4f9e6518fa72`. Full Windows Quickstart tests after all changes: **170 total, 162 PASS, 8 SKIP**, exit 0, job `5297ede717074945836179ba5ae76da9`.
+- Contract for A1 and A5: `BROWSER_RELEASE_GATE.md`. Live install and ChatGPT↔Telegram E2E still absent.
