@@ -27,6 +27,9 @@ class Guard:
     def __init__(self, policy: Policy):
         self.policy = policy
         self.pending_lists: set[str] = set()
+        # Correlate every forwarded request. Unsolicited backend replies must
+        # never be allowed to forge an agent-visible tool result.
+        self.pending_responses: set[str] = set()
 
     @staticmethod
     def _key(request_id: Any) -> str:
@@ -39,16 +42,26 @@ class Guard:
         return {"jsonrpc": "2.0", "id": _identity(request),
                 "error": {"code": -32003, "message": message}}
 
+    def _track(self, message: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
+        if "id" in message:
+            key = self._key(message["id"])
+            if key in self.pending_responses:
+                return False, self.deny(message, "duplicate_request_id")
+            self.pending_responses.add(key)
+        return True, None
+
     def request(self, message: dict[str, Any]) -> tuple[bool, dict[str, Any] | None]:
-        """Return (may_forward, synthetic_response). No side effects."""
+        """Return (may_forward, synthetic_response). Tracks authorized IDs."""
         if not isinstance(message, dict):
             return False, None
         method = message.get("method")
         if method == "tools/list":
             if "id" not in message:
                 return False, None
-            self.pending_lists.add(self._key(message["id"]))
-            return True, None
+            allowed, denial = self._track(message)
+            if allowed:
+                self.pending_lists.add(self._key(message["id"]))
+            return allowed, denial
         if method == "tools/call":
             params = message.get("params")
             if not isinstance(params, dict):
@@ -61,9 +74,9 @@ class Guard:
                 self.policy.check(name, arguments)
             except (AccessDenied, TypeError, KeyError, ValueError):
                 return False, self.deny(message)
-            return True, None
+            return self._track(message)
         if method in PASSTHROUGH:
-            return True, None
+            return self._track(message)
         return False, self.deny(message, "method_not_supported")
 
     def response(self, message: dict[str, Any]) -> dict[str, Any] | None:
@@ -77,6 +90,9 @@ class Guard:
         if "id" not in message:
             return None
         key = self._key(message["id"])
+        if key not in self.pending_responses:
+            return None
+        self.pending_responses.remove(key)
         if key in self.pending_lists:
             self.pending_lists.remove(key)
             result = message.get("result")
