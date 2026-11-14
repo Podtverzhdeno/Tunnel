@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 from typing import Any
 from urllib.request import build_opener, ProxyHandler, Request
+from .dependency_closure import missing_required_files
 
 CURRENT_SCHEMA = 1
 MODES = frozenset(("read_only", "full_access"))
@@ -114,6 +115,8 @@ def preflight(config: dict[str, Any], *, project: Path, fetch=_health) -> dict[s
     data = validate_settings(config, project=project)
     stages = inspect_services(fetch)
     assets = inspect_local_assets(project)
+    missing_modules = missing_required_files(project)
+    assets["python_dependency_closure"] = not bool(missing_modules)
     blockers=["mcp_authorization_boundary_unverified",
               "browser_extension_and_user_login_unverified",
               "live_telegram_delivery_unverified"]
@@ -126,6 +129,7 @@ def preflight(config: dict[str, Any], *, project: Path, fetch=_health) -> dict[s
         "workers": data["workers"],
         "services": stages,
         "source_assets": assets,
+        "missing_runtime_modules": missing_modules,
         "browser_path_valid": True,
         "ready_for_live_start": False,
         "blockers": blockers,
