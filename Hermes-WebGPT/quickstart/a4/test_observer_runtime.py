@@ -85,6 +85,54 @@ class ObserverRuntimeTests(unittest.TestCase):
                       state=self.state, token=self.token, port=port,
                       host=locate_native_host(PROJECT))
 
+    def test_dead_receipt_is_archived_for_reboot_recovery(self):
+        from quickstart.a4.observer_runtime import _archive_dead_receipt
+        receipt = self.state / "a4-observer-launch.json"
+        prior = {"pid": 43123, "port": 18766, "profile": "observer"}
+        receipt.write_text(json.dumps(prior), encoding="utf-8")
+        _archive_dead_receipt(self.state, receipt, prior,
+                              is_present=lambda pid: False)
+        self.assertFalse(receipt.exists())
+        archived = self.state / "a4-observer-launch.dead-43123.json"
+        self.assertEqual(json.loads(archived.read_text(encoding="utf-8")),
+                         prior)
+
+    def test_live_or_unknown_pid_blocks_reboot_recovery(self):
+        from quickstart.a4.observer_runtime import (_archive_dead_receipt,
+                                                      ObserverStartupError)
+        receipt = self.state / "a4-observer-launch.json"
+        prior = {"pid": 43123, "port": 18766, "profile": "observer"}
+        receipt.write_text(json.dumps(prior), encoding="utf-8")
+        for state in (True, None):
+            with self.assertRaisesRegex(ObserverStartupError, "still_present_or_unknown"):
+                _archive_dead_receipt(self.state, receipt, prior,
+                                      is_present=lambda pid: state)
+            self.assertTrue(receipt.exists())
+
+    def test_recovery_never_overwrites_existing_archive(self):
+        from quickstart.a4.observer_runtime import _archive_dead_receipt
+        receipt = self.state / "a4-observer-launch.json"
+        prior = {"pid": 43123, "port": 18766, "profile": "observer"}
+        receipt.write_text(json.dumps(prior), encoding="utf-8")
+        archived = self.state / "a4-observer-launch.dead-43123.json"
+        archived.write_text("preserve", encoding="utf-8")
+        with self.assertRaisesRegex(ObserverStartupError,"archive_collision"):
+            _archive_dead_receipt(self.state, receipt, prior,
+                                  is_present=lambda pid: False)
+        self.assertEqual(archived.read_text(encoding="utf-8"), "preserve")
+        self.assertTrue(receipt.exists())
+
+    def test_recovery_rejects_receipt_change(self):
+        from quickstart.a4.observer_runtime import _archive_dead_receipt
+        receipt = self.state / "a4-observer-launch.json"
+        prior = {"pid": 43123, "port": 18766, "profile": "observer"}
+        receipt.write_text(json.dumps({"pid": 43124,
+                                       "port": 18766,
+                                       "profile": "observer"}), encoding="utf-8")
+        with self.assertRaisesRegex(ObserverStartupError, "receipt_changed"):
+            _archive_dead_receipt(self.state, receipt, prior,
+                                  is_present=lambda pid: False)
+
     def test_occupied_owned_and_authenticated_observer_is_reused(self):
         from unittest.mock import patch
         cfg=self.state / "a4-observer-config.json"
