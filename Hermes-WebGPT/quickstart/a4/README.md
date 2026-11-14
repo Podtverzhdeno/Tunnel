@@ -4,9 +4,15 @@ Updated 2026-11-14. **Production: NOT READY.** The configuration wizard is a wor
 
 ## Local development mode (explicit owner opt-in)
 
-**DEV startup is unblocked.** Double-click `Start-Hermes-DEV.cmd` or use the DEV button in the Windows wizard. The `-DevMode` switch bypasses only the A4 installer stop gate; it does not grant extra Windows rights or change existing MCP credentials/permissions. The original `Start-Hermes-All.cmd` remains guarded.
+**DEV startup is unblocked.** Double-click `Start-Hermes-DEV.cmd` or use the DEV button in the Windows wizard. The `-DevMode` switch bypasses only the A4 installer stop gate; it does not grant extra Windows rights or change existing MCP credentials/permissions. During development `Start-Hermes-All.cmd` defaults to `-DevMode`; use `Start-Hermes-STRICT.cmd` or set `HERMES_A4_STRICT=1` to restore the production gate. This does not alter OS, MCP or Tunnel grants.
 
 Instructions and evidence: `quickstart/a4/DEV_MODE.md`. Keep **DEV readiness** separate from **production acceptance**: A5 sign-off and the scoped broker are not launch requirements for local development. GUI `read_only` is not an effective restriction on the current 28-tool MCP in DEV mode.
+
+## Offline A4 source runtime update (2026-11-14)
+
+A new local-only `v0.0.1-candidate` source archive contains all 24 required Python modules. Compared with previous `v0.0.0-candidate`, `relay.py` and `start_bridge.py` changed. The pinned archive was staged in an isolated temporary Windows directory, its sources imported via `relay.py --help`, and a separate real Relay HTTP server was started with a fresh SQLite database, an ephemeral loopback port and exactly three active slots. `/health` and authenticated `/bridge/status` succeeded; no jobs were sent, no live service switched. The private ZIP is not published or included in this PR.
+
+Detailed checks, pinned SHA256 and job receipts: `quickstart/a4/RUNTIME_REFRESH_20261114.md`. **Not** a clean-clone installer or ChatGPT Web/TG E2E acceptance.
 
 ## Candidate source files
 
