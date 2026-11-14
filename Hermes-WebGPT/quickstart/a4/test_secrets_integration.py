@@ -43,6 +43,8 @@ class SecretBootstrapTests(unittest.TestCase):
         profile={
             "TELEGRAM_BOT_TOKEN": "configured-telegram",
             "CONTROL_PLANE_API_KEY": "synthetic-cp-profile",
+            "control_plane_api_key": "mixed-case-must-be-stripped",
+            "Mcp_Extra_Headers": "mixed-case-must-be-stripped",
             "MCP_EXTRA_HEADERS": "must-be-stripped",
             "CUSTOM_GATEWAY_VALUE": "kept",
         }
@@ -53,7 +55,38 @@ class SecretBootstrapTests(unittest.TestCase):
         self.assertEqual(child["UNRELATED_ALLOWED"],"retained")
         for key in services._GATEWAY_ENV_DENY:
             self.assertNotIn(key,child)
+        self.assertNotIn("control_plane_api_key",child)
+        self.assertNotIn("Mcp_Extra_Headers",child)
         self.assertNotIn("synthetic-cp",str(child))
+
+    def test_sanitized_real_child_process_has_only_gateway_credential(self):
+        import subprocess
+        import sys
+        env=services._gateway_child_environment(
+            {"TELEGRAM_BOT_TOKEN":"synthetic-telegram-do-not-print"},
+            {"PATH":os.environ.get("PATH",""),
+             "SYSTEMROOT":os.environ.get("SYSTEMROOT",""),
+             "CONTROL_PLANE_API_KEY":"synthetic-cp-do-not-print",
+             "HERMES_A4_OBSERVER_AUTHORIZATION":"Bearer synthetic-observer",
+             "MCP_EXTRA_HEADERS":"Authorization: synthetic"})
+        # The worker prints only booleans, never environment values.
+        code=(
+            "import json,os;"
+            "print(json.dumps({k:k in os.environ for k in "
+            "['TELEGRAM_BOT_TOKEN','CONTROL_PLANE_API_KEY',"
+            "'HERMES_A4_OBSERVER_AUTHORIZATION','MCP_EXTRA_HEADERS']}))"
+        )
+        child=subprocess.run([sys.executable,"-c",code],env=env,
+                             capture_output=True,text=True,timeout=15)
+        self.assertEqual(child.returncode,0,child.stderr)
+        flags=__import__("json").loads(child.stdout)
+        self.assertEqual(flags,{
+            "TELEGRAM_BOT_TOKEN":True,
+            "CONTROL_PLANE_API_KEY":False,
+            "HERMES_A4_OBSERVER_AUTHORIZATION":False,
+            "MCP_EXTRA_HEADERS":False,
+        })
+        self.assertNotIn("synthetic-",child.stdout+child.stderr)
 
     def test_gateway_process_environment_denies_missing_telegram(self):
         with self.assertRaisesRegex(services.StartupBlocked,"telegram_bot_token_missing"):
@@ -135,15 +168,20 @@ class SecretBootstrapTests(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in state.iterdir()),
                              ["settings-a4.json"])
 
-    def test_dev_command_is_explicit_and_no_global_setting(self):
+    def test_dev_is_default_during_development_but_strict_is_reversible(self):
         root = Path(__file__).resolve().parents[2]
         dev = (root / "Start-Hermes-DEV.cmd").read_text(encoding="utf-8")
         normal = (root / "Start-Hermes-All.cmd").read_text(encoding="utf-8")
         self.assertIn("-DevMode", dev)
-        self.assertNotIn("-DevMode", normal)
+        self.assertIn("-DevMode", normal)
+        self.assertIn('if /I "%HERMES_A4_STRICT%"=="1"', normal)
         self.assertIn("quickstart", dev)
-        self.assertNotIn("setx", dev.lower())
-        self.assertNotIn("reg add", dev.lower())
+        self.assertIn("quickstart", normal)
+        for script in (dev, normal):
+            self.assertNotIn("setx", script.lower())
+            self.assertNotIn("reg add", script.lower())
+            self.assertNotIn("icacls", script.lower())
+            self.assertNotIn("netsh", script.lower())
 
     def test_powershell_launcher_consumes_matching_dpapi_filename(self):
         script = (Path(__file__).resolve().parents[2] / "quickstart" / "start.ps1").read_text(encoding="utf-8-sig")
