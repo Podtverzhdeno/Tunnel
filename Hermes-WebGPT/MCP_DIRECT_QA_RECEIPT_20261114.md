@@ -64,9 +64,14 @@ This is NOT a claim of live ChatGPT or Telegram end-to-end delivery.
 ## Live environment readiness
 Read-only `python -m hermes_mcp_cdp_preflight`:
 job `1a0263c925d14f14bf228f29caacc6ee`, rc0.
-Existing Relay reachable=true. Existing Playwright model route=false,
-CDP browser reachable=false, worker principal present=false.
-No live authorization, no user account touched, no Relay restart.
+At that snapshot: existing Relay reachable=true; Playwright model
+route=false, CDP browser reachable=false, worker principal present=false.
+A later, separate read-only probe (job
+`95c2f02ba0c0440ea8e12ebeee14c72e`, rc0) saw Relay=true,
+Playwright route=true, CDP endpoint=true, worker principal=true,
+**matching ChatGPT conversation tabs=0**. Browser authentication and
+actual Telegram delivery remain unverified. This work did not restart
+Relay, perform login or send a live inference.
 
 ## Branch and scope
 Draft PR: https://github.com/Podtverzhdeno/Tunnel/pull/8
