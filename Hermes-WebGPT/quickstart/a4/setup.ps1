@@ -430,8 +430,11 @@ $yandexHealth.Add_Click({
         if ($LASTEXITCODE -ne 0) { throw 'Диагностика Яндекса недоступна.' }
         $report=($lines | Select-Object -Last 1) | ConvertFrom-Json
         switch ($report.status) {
-            'NO_CONTENT_SCRIPT_HANDOFF' {
-                $status.Text='Не найден handoff во вкладку AutoPilot. Отправка не подтверждена.'
+            'REGISTRY_MANIFEST_METADATA_INCOMPLETE' {
+                $status.Text='AutoPilot найден. Яндекс не передал полный manifest. Handoff не подтверждён.'
+            }
+            'NO_DECLARED_CONTENT_SCRIPT' {
+                $status.Text='AutoPilot: нет объявленного content script. Динамический handoff не проверен.'
             }
             'SAFE_DEMO_NO_AUTOMATIC_SEND' {
                 $status.Text='AutoPilot: SAFE_DEMO, автоматической отправки нет.'
