@@ -51,3 +51,12 @@ Local Windows result 2026-11-14: 78 enumerated; **76 PASS, 2 SKIP** (Windows sym
 | 10 | Real PC installation | NOT DONE | Independent Windows 10/11 + Yandex production E2E |
 
 Next executable step: agree on a single authoritative MCP profile/port for mode enforcement, implement that routed host boundary, then run real permission-denial tests without disturbing active 28-tool sessions. At no stage should an agent self-approve elevated OS permissions.
+
+## A4 continuation — 2026-11-14 14:00 UTC (supersedes earlier test count)
+
+- Added `quickstart/a4/observer_tunnel.py` and `test_observer_tunnel.py`. A dedicated `hermes-a4-observer` alias requires explicit owner approval and a **different** Tunnel ID; a receipt prevents duplicate operations and ambiguous retries. The existing `local-workspace` tunnel is never reconfigured.
+- Verified against official openai/tunnel-client source: `--runtime-api-key env:CONTROL_PLANE_API_KEY`, `MCP_EXTRA_HEADERS=Authorization: env:NAME`, and inherited child process environment are supported. The GUI now passes the observer bearer **in memory**, not via a newly written plaintext header file. DPAPI remains the at-rest secret store.
+- After `runtimes connect`, the connector runs `runtimes status hermes-a4-observer --json` and requires exact boolean `process_running=true`, `healthy=true`, `ready=true`; otherwise the attempt is **UNKNOWN**, never automatically retried. This is a local-status check, NOT remote ChatGPT E2E.
+- Observer startup can archive an old PID receipt **only** when Windows confirms the PID is absent. Tests cover false/unknown PID states and archive conflicts.
+- Last full Windows Quickstart regression: **94 enumerated; 92 PASS, 2 SKIP**, rc=0, Local Workspace job `ab620be80b984926922314350519b7ea`. Two Windows symlink privilege tests remain skipped. No production services were interrupted.
+- The final live click-through in the actual Yandex Browser, owner-granted full access, clean clone dependency provisioning, release updater, independent A5 QA and Telegram↔ChatGPT↔Telegram delivery are still unverified. Keep PR **Draft**.
