@@ -8,10 +8,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 import urllib.request
 from typing import Callable, Any
 
+# Local Workspace and the WinForms DEV-status button execute this file by
+# path. Keep the same entrypoint usable with both "python file.py" and
+# "python -m quickstart.a4.dev_status" from the checkout.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from quickstart import services
+from quickstart.a4.relay_capacity_observer import capacity_report
 
 ENDPOINTS = {
     "mcp": "http://127.0.0.1:8765/healthz",
@@ -37,6 +45,7 @@ def _get(url: str) -> Any:
 
 def status(*, fetch: Callable[[str], Any] = _get,
            gateway_plan: Callable[[], dict] = services.gateway_plan,
+           capacity_probe: Callable[[], dict] = capacity_report,
            project: Path | None = None) -> dict:
     values = {}
     for name, url in ENDPOINTS.items():
@@ -75,6 +84,17 @@ def status(*, fetch: Callable[[str], Any] = _get,
         if ctrl.get("reason_code") in ("network_error", "auth_error"):
             ctrl_reason = ctrl["reason_code"]
 
+    try:
+        relay_cap = capacity_probe()
+        if not isinstance(relay_cap, dict):
+            relay_cap = {}
+    except (OSError, ValueError, TypeError):
+        relay_cap = {}
+    confirmed_slots = (relay_cap.get("running_relay_slots")
+                       if relay_cap.get("local_relay_authenticated") is True
+                       else None)
+    if type(confirmed_slots) is not int or not 1 <= confirmed_slots <= 25:
+        confirmed_slots = None
     checks = {
         "mcp": bool(mcp_ok),
         "tunnel_local": bool(transport_ready),
@@ -85,6 +105,11 @@ def status(*, fetch: Callable[[str], Any] = _get,
         "local_components": checks,
         "local_ready": all(checks.values()),
         "mcp_tools_observed": mcp["tools"] if mcp_ok else None,
+        "relay_running_slots_authenticated": confirmed_slots,
+        "relay_three_slot_capacity_verified": (
+            confirmed_slots is not None and confirmed_slots >= 3
+        ),
+        "three_parallel_browser_requests_e2e_verified": False,
         "tunnel_control_state": ctrl_state,
         "tunnel_control_reason": ctrl_reason,
         "dev_mode_can_use_existing_services": all(checks.values()),
