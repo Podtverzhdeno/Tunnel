@@ -63,6 +63,15 @@ class PreflightTests(unittest.TestCase):
         self.assertFalse(result["ready_for_live_start"])
         self.assertIn("mcp_authorization_boundary_unverified", result["blockers"])
 
+    def test_missing_clone_sources_are_reported_without_side_effects(self):
+        from quickstart.a4.preflight import preflight
+        report = preflight(self.cfg, project=self.project,
+                           fetch=lambda _: {"status": "offline"})
+        self.assertFalse(report["ready_for_live_start"])
+        self.assertFalse(report["source_assets"]["relay_source"])
+        self.assertFalse(report["source_assets"]["local_mcp_source"])
+        self.assertIn("required_source_components_missing", report["blockers"])
+
     def test_unhealthy_services_are_explicit(self):
         self.assertEqual(inspect_services(fetch=lambda _: (_ for _ in ()).throw(TimeoutError())),
                          {"mcp": False, "tunnel": False, "relay": False})
