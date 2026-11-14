@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from quickstart import services
 from quickstart.a4.relay_capacity_observer import capacity_report
+from quickstart.a4.loaded_runtime_parity import compare_loaded
 
 ENDPOINTS = {
     "mcp": "http://127.0.0.1:8765/healthz",
@@ -64,6 +65,9 @@ def status(*, fetch: Callable[[str], Any] = _get,
         relay.get("service") == "hermes-webgpt-relay"
         and relay.get("protocol") == 1
     )
+    # Loaded Relay source may have diverged from the checkout while the
+    # process remained healthy. Reuse the same observed GET; no restart.
+    loaded_runtime = compare_loaded(root=ROOT, observed=relay or {})
     transport_ready = (
         tunnel == "ready" or isinstance(tunnel, dict)
         and (tunnel.get("ready") is True or tunnel.get("status") == "ready")
@@ -109,6 +113,9 @@ def status(*, fetch: Callable[[str], Any] = _get,
         "relay_three_slot_capacity_verified": (
             confirmed_slots is not None and confirmed_slots >= 3
         ),
+        "relay_loaded_build_status": loaded_runtime["status"],
+        "relay_loaded_equals_disk_source": loaded_runtime["loaded_equals_current_source"],
+        "relay_source_changed_since_load": loaded_runtime["changed_since_loaded"],
         "three_parallel_browser_requests_e2e_verified": False,
         "tunnel_control_state": ctrl_state,
         "tunnel_control_reason": ctrl_reason,
