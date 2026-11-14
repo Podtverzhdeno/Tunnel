@@ -47,10 +47,24 @@ for its Relay completion.
   * ready: 1 Send, HTTP 200, Relay done;
   * challenge: 0 Send, Relay blocked, HTTP 502;
   * close_after_click: 1 Send, Relay uncertain, HTTP 502, no retry.
-- Hermes runtime Python lacks optional `mcp` client SDK:
-  `planning/test_hermes_mcp_client_stdio.py` gave
-  `mcp_sdk_not_installed`, rc=2. This is a separate gateway-integration
-  dependency; our JSON-RPC server can run without that SDK.
+- Installed Hermes runtime Python lacks optional `mcp` client SDK,
+  plus `pywintypes` for MCP imports in that environment. No live venv touched.
+- Project-local `.venv-cdp` now has the Hermes-declared optional `mcp>=1.2,<2`
+  SDK, resolved version **1.30.0**; install receipt job
+  `4361111c73b948c9a96ef54b3611b18b`, rc=0.
+- Real `mcp.ClientSession` stdio handshake: job
+  `15115051728a4729aac8c66601eb9d28`, rc=0,
+  discovered both MCP tools and invoked status.
+- Actual installed Hermes CLI through Relay → true MCP SDK stdio call →
+  real Playwright Edge fixture → Relay → same Hermes CLI:
+  job `92a70d66a4df4a388950be94db118249`, rc=0,
+  CLI received `LOCAL_FIXTURE_OK`, one synthetic Send.
+- Actual installed Hermes MCP registry from the isolated project test venv:
+  job `76342bbe7ded4b21bb38759f1a979945`, rc=0.
+  Both tools registered under the `mcp_hermes_web_cdp_fixture_` prefix.
+  No running Gateway or real profile modification.
+- Latest transport/relay focused regression: job
+  `16ed667fba134295bf208ee7488003a1`, rc=0, **47/47 PASS**.
 - Existing live Hermes/Telegram browser workers, their SQLite, keys and
   profile were not touched. No live Telegram delivery E2E is claimed.
 
