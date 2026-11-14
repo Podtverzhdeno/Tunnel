@@ -1,5 +1,6 @@
 ﻿[CmdletBinding()]
-param([switch]$DryRun,[switch]$ResetKey,[switch]$SkipGateway)
+param([switch]$DryRun,[switch]$ResetKey,[switch]$SkipGateway,
+      [switch]$DevMode,[switch]$GateCheckOnly)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -11,8 +12,26 @@ $KeyPath = Join-Path $StateDir "control-plane-key.dpapi.xml"
 $Started = @()
 $Reused = @()
 $TelegramInjectedByLauncher = $false
+# A control-plane key may arrive from a parent shell. The legacy launcher
+# must never let MCP/Relay/Gateway inherit it; only the Tunnel child needs it.
+$ProvidedControlPlaneKey = $env:CONTROL_PLANE_API_KEY
 
 function Say([string]$Message) { Write-Host ("[Hermes] " + $Message) }
+function Assert-A4StartupMode {
+    # User-owned development opt-in: bypass ONLY the A4 installer gate.
+    # This switch does not modify Windows permissions, MCP capabilities,
+    # cloud grants, or any installed service's authentication policy.
+    $A4Settings = Join-Path $StateDir "settings-a4.json"
+    if (Test-Path -LiteralPath $A4Settings -PathType Leaf) {
+        if (-not $DevMode) {
+            throw "A4: режим прав выбран, но защищённый MCP ещё не подключён. Для локальной разработки используйте отдельный DEV-запуск."
+        }
+        Say "DEV MODE: блокировка A4 снята для этого запуска."
+        Say "DEV MODE: выбор «Только чтение»/«Полный доступ» в мастере НЕ ограничивает действующий MCP."
+    } elseif ($DevMode) {
+        Say "DEV MODE: локальный запуск без требования production-приёмки A4."
+    }
+}
 function Get-Loopback([string]$Url) {
     try {
         $req = [System.Net.HttpWebRequest] [System.Net.WebRequest]::Create($Url)
@@ -134,10 +153,24 @@ function Invoke-Guard([string]$Name, [string]$PythonExe, [bool]$Apply) {
 $LaunchMutex = $null
 $MutexOwned = $false
 try {
-    $LaunchMutex = [System.Threading.Mutex]::new($false, "Local\HermesOneClickStartup")
-    try { $MutexOwned = $LaunchMutex.WaitOne(0) }
-    catch [System.Threading.AbandonedMutexException] { $MutexOwned = $true }
-    if (-not $MutexOwned) { throw "Другая копия OneClick уже выполняет запуск; повторный запуск отменён." }
+    # DryRun is observational and must remain available while a real
+    # OneClick launch holds the exclusive mutex. Real launches still fail
+    # closed on contention, preserving duplicate-start protection.
+    if ($GateCheckOnly) {
+        Assert-A4StartupMode
+        Say "A4_GATE_OK: только проверка режима запуска; службы и файлы не изменены."
+        exit 0
+    }
+    if (-not $DryRun) {
+        $LaunchMutex = [System.Threading.Mutex]::new($false, "Local\HermesOneClickStartup")
+        try { $MutexOwned = $LaunchMutex.WaitOne(0) }
+        catch [System.Threading.AbandonedMutexException] { $MutexOwned = $true }
+        if (-not $MutexOwned) { throw "Другая копия OneClick уже выполняет запуск; повторный запуск отменён." }
+    }
+    # A control-plane credential is privileged for Tunnel only. Never
+    # expose an inherited parent-shell value to a newly started MCP,
+    # Relay, Gateway or diagnostic child process.
+    Remove-Item Env:CONTROL_PLANE_API_KEY -ErrorAction SilentlyContinue
     Say "Проверка окружения и уже работающих сервисов..."
     $mcpReady = Test-Mcp
     $tunnelReady = Test-Tunnel
@@ -162,13 +195,9 @@ try {
         Say "DRY RUN завершён. Службы, ключи и файлы не менялись."
         exit 0
     }
-    # A4 UI choices are NOT trusted authorization records. Until the host
-    # installs an enforced permission boundary, the legacy launcher must not
-    # silently start a 28-tool MCP after a user chose read-only mode.
-    $A4Settings = Join-Path $StateDir "settings-a4.json"
-    if (Test-Path -LiteralPath $A4Settings -PathType Leaf) {
-        throw "A4: режим прав выбран, но защищённый MCP ещё не подключён. Небезопасный запуск запрещён."
-    }
+    # Production mode keeps the A4 permission boundary requirement;
+    # explicit DEV mode bypasses this installer-only gate for local tests.
+    Assert-A4StartupMode
     if (-not (Test-Path -LiteralPath $StateDir)) { [void](New-Item -ItemType Directory -Path $StateDir -Force) }
     if (-not (Test-Path -LiteralPath $LogDir)) { [void](New-Item -ItemType Directory -Path $LogDir -Force) }
     if ($ResetKey -and (Test-Path -LiteralPath $KeyPath)) {
@@ -193,6 +222,10 @@ try {
             throw "Профиль local-workspace.yaml отсутствует; нужна одноразовая настройка туннеля."
         }
         $newKey = $null
+        if (-not [string]::IsNullOrWhiteSpace($ProvidedControlPlaneKey)) {
+            # Restore the supplied value for Tunnel's preflight/child only.
+            $env:CONTROL_PLANE_API_KEY=$ProvidedControlPlaneKey
+        }
         if ([string]::IsNullOrWhiteSpace($env:CONTROL_PLANE_API_KEY)) {
             if (Test-Path -LiteralPath $KeyPath) {
                 $key = Import-Clixml -LiteralPath $KeyPath
@@ -215,6 +248,9 @@ try {
             Say "Ключ сохранён с Windows DPAPI для текущего пользователя."
         }
         $null = Launch-Child "Tunnel" $tunnel "run --profile local-workspace" $Project
+        # The Tunnel child inherited its one required key at process start.
+        # Drop it BEFORE any subsequent Relay/Gateway process is created.
+        Remove-Item Env:CONTROL_PLANE_API_KEY -ErrorAction SilentlyContinue
         Wait-Ready "Tunnel" { Test-Tunnel }
         $Started += "Tunnel"
     }
