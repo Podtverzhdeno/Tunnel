@@ -129,7 +129,9 @@ def serve(policy: Policy, backend: list[str]) -> int:
                 # Invalid upstream frames are dropped, never echoed.
                 continue
 
-    threading.Thread(target=reader, daemon=True, name="mcp-a4-guard-reader").start()
+    background = threading.Thread(target=reader, daemon=True,
+                                  name="mcp-a4-guard-reader")
+    background.start()
     try:
         for line in sys.stdin:
             try:
@@ -150,7 +152,22 @@ def serve(policy: Policy, backend: list[str]) -> int:
                 # Invalid JSON is not forwarded.
                 continue
     finally:
-        process.terminate() if process.poll() is None else None
+        # EOF from the client is a normal graceful shutdown. Drain outstanding
+        # JSON-RPC responses before killing a slow backend.
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        background.join(timeout=3)
     return 0
 
 
