@@ -21,7 +21,8 @@ class SetupTests(unittest.TestCase):
     def test_gui_no_unguarded_launch(self):
         gui = (ROOT / "quickstart" / "a4" / "setup.ps1").read_text(encoding="utf-8")
         self.assertIn("pending_backend_integration", gui)
-        self.assertIn("ConvertFrom-SecureString", gui)
+        self.assertIn("Export-Clixml", gui)
+        self.assertIn("control-plane-key", gui)
         self.assertIn("read_only", gui)
         self.assertIn("full_access", gui)
         self.assertNotIn("Start-Hermes-All.cmd", gui)
