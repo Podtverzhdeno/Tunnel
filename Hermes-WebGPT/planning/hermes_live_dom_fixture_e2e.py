@@ -36,12 +36,15 @@ ROOT_FIXTURE_HTML=r"""<!DOCTYPE html>
 contenteditable="true" role="textbox"></div>
 <button id="composer-submit-button" data-testid="send-button" aria-label="Send" disabled>Send</button>
 </form>
+<button id="stop-generation" data-testid="stop-button"
+ aria-label="Stop generating" style="display:none">Stop generating</button>
 <script>
 const CASE = "__CASE__";
 const editor=document.getElementById("prompt-textarea");
 const send=document.getElementById("composer-submit-button");
 const messages=document.getElementById("messages");
 const dialog=document.getElementById("challenge");
+const stop=document.getElementById("stop-generation");
 window.sendCount=0;
 window.postedUser=0;
 window.postedAssistant=0;
@@ -61,9 +64,14 @@ send.addEventListener("click", ev=>{
     }
     const reply=document.createElement("div");
     reply.setAttribute("data-message-author-role","assistant");
-    reply.innerText=JSON.stringify({request_id:id,content:"LIVE_DOM_FIXTURE_OK",tool_calls:[]});
+    const payload=JSON.stringify({request_id:id,content:"LIVE_DOM_FIXTURE_OK",tool_calls:[]});
+    reply.innerText=CASE==="fenced_json" ? '\`\`\`json\n'+payload+'\n\`\`\`' : payload;
     messages.appendChild(reply);
     window.postedAssistant++;
+    if (CASE==="streaming_json") {
+        stop.style.display="block";
+        setTimeout(()=>{stop.style.display="none"},2200);
+    }
     editor.innerText="";
     send.disabled=true;
 });
@@ -146,11 +154,14 @@ def isolated_case(mode, expected):
                             return SimpleNamespace(contexts=[ctx])
                         result=await execute_attached_once(
                             http,CDP,CHAT,journal,browser_connector=owned_connector,
-                            timeout_s=1 if mode in ("no_user","foreign_user") else 5)
+                            timeout_s=1 if mode in ("no_user","foreign_user") else (8 if mode=="streaming_json" else 5))
                         clicks=await page.evaluate("window.sendCount")
                         state=queue.read(rid)["state"]
                         if result["outcome"]!=expected:
                             raise AssertionError(f"outcome {result}, expected {expected}")
+                        if mode=="streaming_json" and await page.locator(
+                                "#stop-generation").is_visible():
+                            raise AssertionError("streaming_json_committed_before_stop")
                         if mode=="challenge" and clicks!=0:
                             raise AssertionError("challenge_clicked_send")
                         if mode!="challenge" and clicks!=1:
@@ -170,7 +181,8 @@ def isolated_case(mode, expected):
     return asyncio.run(run_case())
 
 def main():
-    cases=(("ready","done"),("challenge","blocked"),
+    cases=(("ready","done"),("fenced_json","done"),
+           ("streaming_json","done"),("challenge","blocked"),
            ("no_user","uncertain"),("foreign_user","uncertain"))
     results=[isolated_case(*c) for c in cases]
     print(json.dumps({"ok":True,"cases":results,"browser":"real_Edge",
