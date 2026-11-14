@@ -162,6 +162,13 @@ try {
         Say "DRY RUN завершён. Службы, ключи и файлы не менялись."
         exit 0
     }
+    # A4 UI choices are NOT trusted authorization records. Until the host
+    # installs an enforced permission boundary, the legacy launcher must not
+    # silently start a 28-tool MCP after a user chose read-only mode.
+    $A4Settings = Join-Path $StateDir "settings-a4.json"
+    if (Test-Path -LiteralPath $A4Settings -PathType Leaf) {
+        throw "A4: режим прав выбран, но защищённый MCP ещё не подключён. Небезопасный запуск запрещён."
+    }
     if (-not (Test-Path -LiteralPath $StateDir)) { [void](New-Item -ItemType Directory -Path $StateDir -Force) }
     if (-not (Test-Path -LiteralPath $LogDir)) { [void](New-Item -ItemType Directory -Path $LogDir -Force) }
     if ($ResetKey -and (Test-Path -LiteralPath $KeyPath)) {
