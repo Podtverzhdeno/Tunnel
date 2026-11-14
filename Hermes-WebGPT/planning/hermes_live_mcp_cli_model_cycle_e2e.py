@@ -27,7 +27,7 @@ from hermes_live_dom_fixture_e2e import CHAT, ROOT_FIXTURE_HTML
 import relay
 
 
-async def run(client_kind='cli'):
+async def run(client_kind='cli', reply_mode='ready'):
     # Imports requiring Playwright/MCP SDK happen only after the isolated
     # virtualenv trampoline; the system Python has neither package.
     from cdp_attach_smoke_suite import edge_path, debug_port
@@ -95,7 +95,7 @@ async def run(client_kind='cli'):
                 async def offline_route(route):
                     if route.request.url==CHAT:
                         await route.fulfill(status=200,content_type="text/html",
-                            body=ROOT_FIXTURE_HTML.replace("__CASE__","ready"))
+                            body=ROOT_FIXTURE_HTML.replace("__CASE__",reply_mode))
                     else:
                         await route.abort()
                 await page.route("**/*",offline_route)
@@ -182,6 +182,7 @@ async def run(client_kind='cli'):
                             "mcp":"actual_stdio_sidecar_and_server",
                             "browser":"real_Edge_connect_over_cdp",
                             "model":relay.MODEL_CDP,
+                            "reply_mode":reply_mode,
                             "browser_sends":clicks,
                             "relay_request_count":len(states),
                             "relay_state":states[0]["state"] if len(states)==1 else "unexpected",
@@ -210,6 +211,9 @@ if __name__=="__main__":
     import argparse
     parser=argparse.ArgumentParser()
     parser.add_argument("--client",choices=("cli","telegram"),default="cli")
+    parser.add_argument("--reply-mode",
+                        choices=("ready","fenced_json","rendered_code","streaming_json"),
+                        default="ready")
     options=parser.parse_args()
     venv=ROOT/".venv-cdp"/"Scripts"/"python.exe"
     if Path(sys.executable).resolve()!=venv.resolve():
@@ -217,7 +221,7 @@ if __name__=="__main__":
             print('{"ok":false,"reason":"cdp_venv_missing"}')
             raise SystemExit(2)
         try:
-            r=subprocess.run([str(venv),str(Path(__file__).resolve()),"--client",options.client],
+            r=subprocess.run([str(venv),str(Path(__file__).resolve()),"--client",options.client,"--reply-mode",options.reply_mode],
                 cwd=ROOT,capture_output=True,text=True,encoding="utf8",
                 errors="replace",timeout=190)
         except subprocess.TimeoutExpired:
@@ -228,7 +232,7 @@ if __name__=="__main__":
             print(r.stderr.strip()[-1500:],file=sys.stderr)
         raise SystemExit(r.returncode)
     try:
-        asyncio.run(run(options.client))
+        asyncio.run(run(options.client,options.reply_mode))
     except Exception as exc:
         import traceback
         frames=traceback.extract_tb(exc.__traceback__)
