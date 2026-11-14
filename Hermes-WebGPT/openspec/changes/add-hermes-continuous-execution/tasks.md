@@ -43,6 +43,8 @@
 - [ ] A5. Review branch diff/test provenance, select canary/rollback and
   explicitly approve any installation or live feature flag.
 
+- [x] A1. Code review follow-up: persist successful Work→Chat attempt counts and block new run when an old tab still resolves even if volatile ownership proof was lost; regression **27/27 PASS**, job `546acd52727749cdbb2e7e96f126b472`.
+
 ### Additional engineering tasks
 - [ ] AutoPilot-Web Companion compatibility matrix keyed by extension ID,
   manifest version, source SHA and owner documentId; refuse unknown versions.

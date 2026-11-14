@@ -68,7 +68,7 @@ async function archiveStoppedRun(previous){
  for(const slot of previous.slots){
   if(!Number.isInteger(slot.tabId))continue;
   const ref=owned[String(slot.tabId)];
-  if(!ref||ref.runId!==previous.id||ref.workerId!==slot.id)continue;
+  // A lost volatile ownership record is not proof that this tab is closed.
   let live=false;
   try{const tab=await chrome.tabs.get(slot.tabId);live=!!tab;}
   catch(e){

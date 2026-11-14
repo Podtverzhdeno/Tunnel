@@ -112,7 +112,7 @@ export async function ensureChatReady({
     throw Error('CHAT_READINESS_CONFIG_INVALID');
   }
   const started=Date.now();
-  let switched=!allowModeSwitch,last='NOT_PROBED',attempt=0;
+  let switched=!allowModeSwitch,switchAttempted=false,last='NOT_PROBED',attempt=0;
   for(;attempt<maxAttempts;attempt++){
     if(await assertOwned()!==true)return {schema:1,state:'OWNERSHIP_LOST',attempts:attempt};
     let tab;
@@ -143,7 +143,7 @@ export async function ensureChatReady({
       }
       if(probe){
         last=probe.state;
-        if(last==='MODE_SWITCH_REQUESTED')switched=true;
+        if(last==='MODE_SWITCH_REQUESTED'){switched=true;switchAttempted=true;}
         if(last==='READY'){
           // Re-check ownership and tab after asynchronous DOM operations.
           if(await assertOwned()!==true)return {schema:1,state:'OWNERSHIP_LOST',attempts:attempt+1};
@@ -158,7 +158,8 @@ export async function ensureChatReady({
             editorEmpty:probe.editorEmpty,
             hasAttachments:probe.hasAttachments,
             chatModeConfirmed:probe.chatModeConfirmed,
-            hasModeControl:probe.hasModeControl};
+            hasModeControl:probe.hasModeControl,
+            modeSwitchRequested:switchAttempted};
         }
         if(['FOREIGN_DOCUMENT','OFFLINE','AUTH_REQUIRED',
             'AMBIGUOUS_MODE','AMBIGUOUS_COMPOSER',
@@ -171,5 +172,6 @@ export async function ensureChatReady({
     await sleep(Math.min(waitMs*(attempt+1),2000));
   }
   return {schema:1,state:'CHAT_READY_TIMEOUT',lastObservation:last,
+    modeSwitchRequested:switchAttempted,
     attempts:attempt};
 }

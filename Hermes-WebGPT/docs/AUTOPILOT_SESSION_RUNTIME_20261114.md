@@ -48,6 +48,11 @@ python run_probe_real_chatgpt_yandex.py
 ```
 The two Python convenience runners expect `Hermes-WebGPT\.venv-cdp\Scripts\python.exe` for Playwright.
 
+### Review hardening
+- A successful Work→Chat mode switch increments persisted per-tab mode budget rather than being lost when READY is observed later.
+- An unresolved saved tab ID blocks restart even if the browser-session ownership map is lost after suspension.
+- Final focused suite **27/27 PASS**, job `546acd52727749cdbb2e7e96f126b472`, returncode 0. This does not change the LIVE HTTP 403 / absent signed-in E2E limitation.
+
 ## SDD / handoff
 - OpenSpec / SDD: `openspec/changes/add-hermes-continuous-execution/design.md`, FR-AP-001–010.
 - Implementation checklist: `openspec/changes/add-hermes-continuous-execution/tasks.md`.

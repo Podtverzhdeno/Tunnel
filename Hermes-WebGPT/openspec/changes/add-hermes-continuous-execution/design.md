@@ -110,6 +110,12 @@ without Send and with the existing one-shot draft fence.
   in a separate parent Git repo; do NOT switch the dirty shared
   `IdeaProjects/main` branch.
 
+### Additional review hardening (2026-11-14)
+
+- **FR-AP-002 negative:** WHEN Work→Chat is requested, THEN the successful later READY result MUST carry `modeSwitchRequested=true` and increment the persisted per-tab attempt counter, preventing repeated mode clicks across monitoring cycles.
+- **FR-AP-008 negative:** WHEN a stopped run loses its volatile ownership entry but a saved tab ID still resolves, THEN a new run MUST be blocked. Absence of an ownership record is never evidence that a browser tab was closed. A5 shall test this after MV3 suspension.
+- Review regression: **27/27 Node PASS** with actual job `546acd52727749cdbb2e7e96f126b472`, rc 0. Live signed-in ChatGPT/Telegram acceptance remains OPEN.
+
 ### A2/A3 / A5 handoff and release gate
 
 A2/A3 should bind an authenticated Web Companion adapter to

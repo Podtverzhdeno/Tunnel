@@ -30,6 +30,7 @@ test('Work-to-Chat switch occurs once and requires subsequent ready confirmation
  assert.equal(result.state,'READY');
  assert.equal(result.attempts,2);
  assert.equal(result.documentId,DOC);
+ assert.equal(result.modeSwitchRequested,true);
  assert.deepEqual(r.calls.map(x=>x.args[0].switchToChat),[true,false]);
 });
 test('without an explicit mode-switch grant Work is never clicked',async()=>{

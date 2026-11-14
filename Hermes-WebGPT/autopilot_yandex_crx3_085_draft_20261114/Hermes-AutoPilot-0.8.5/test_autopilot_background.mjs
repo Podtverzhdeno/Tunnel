@@ -89,6 +89,8 @@ test('AutoPilot 0.8.5 respects three workers, drafts safely, reuses tabs, stops 
  assert.equal(closed,0,'assigned unfinished tasks must keep their tabs');
  assert.equal(tabs.size,5);
  assert(stopped.result.details.every(x=>x.reason==='INCOMPLETE_TASK_PRESERVED'));
+ // Simulate MV3 browser-session proof loss while the old tabs still exist.
+ session.hermesAutopilotOwnedTabsV2={};
  const refused=await send('START',{goal:'another run',tasks,maxConcurrent:3});
  assert.equal(refused.ok,false);
  assert.match(refused.error,/PREVIOUS_RUN_TABS_STILL_OPEN_REQUIRES_REVIEW/);

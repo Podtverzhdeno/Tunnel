@@ -29,7 +29,8 @@ function concise(value){
     chatModeConfirmed:value.chatModeConfirmed,
     hasModeControl:value.hasModeControl,
     documentId:value.documentId||null,
-    lastObservation:value.lastObservation};
+    lastObservation:value.lastObservation,
+    modeSwitchRequested:value.modeSwitchRequested};
 }
 export function createSessionController({
   chromeAPI,readRun,readOwned,safeClose,
@@ -68,8 +69,8 @@ export function createSessionController({
     const state={...concise(observation),tabId:slot.tabId,
       observedAt:now,
       modeSwitches:(sameTab ? (existing.modeSwitches||0):0)+
-        (observation.lastObservation==='MODE_SWITCH_REQUESTED'?1:0),
-      lastModeSwitchMs:observation.lastObservation==='MODE_SWITCH_REQUESTED'?
+        (observation.modeSwitchRequested===true?1:0),
+      lastModeSwitchMs:observation.modeSwitchRequested===true?
         now : (sameTab?existing.lastModeSwitchMs:0),
       // Record an error streak for bounded IDLE-only reload.
       errorStreak: observation.state==='READY'?0:

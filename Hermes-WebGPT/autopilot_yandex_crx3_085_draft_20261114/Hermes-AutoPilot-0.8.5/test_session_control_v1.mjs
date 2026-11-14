@@ -37,8 +37,25 @@ function fixture({idle=false,observe='READY',adapter=null,now=100000}={}){
    workerId:'worker-1',taskId:TASK,epoch:1,
    requestId:'request_123456789012345678901234567890',
    ...extra});
- return {run,storage,owned,signals,controller,req};
+ return {run,storage,owned,signals,chromeAPI,controller,req};
 }
+test('Work-to-Chat attempt counts against the persisted switch budget',async()=>{
+ const x=fixture();
+ let count=0;
+ x.chromeAPI.scripting.executeScript=async ()=>{
+   const state=++count===1?'MODE_SWITCH_REQUESTED':'READY';
+   return [{frameId:0,documentId:DOC,result:{
+     schema:1,origin:'https://chatgpt.com',state,
+     editorEmpty:true,hasAttachments:false,
+     chatModeConfirmed:state==='READY',hasModeControl:true
+   }}];
+ };
+ const result=await x.controller.inspect('worker-1',{maxAttempts:2,timeoutMs:2000});
+ assert.equal(result.state,'READY');
+ assert.equal(result.modeSwitchRequested,true);
+ assert.equal(x.storage.hermesAutopilotBrowserHealthV1.sessions['worker-1'].modeSwitches,1);
+});
+
 test('A2/A3 capabilities are versioned, no direct DOM Send',async()=>{
  const x=fixture();
  const a=await x.controller.control(x.req('CAPABILITIES'));
