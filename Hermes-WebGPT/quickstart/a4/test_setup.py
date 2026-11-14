@@ -29,6 +29,18 @@ class SetupTests(unittest.TestCase):
         self.assertNotIn("start.ps1 -File", gui)
 
     @unittest.skipUnless(os.name == "nt" and shutil.which("powershell.exe"),
+                         "Windows WinForms smoke requires PowerShell")
+    def test_real_gui_construction_without_user_interaction(self):
+        f = ROOT / "quickstart" / "a4" / "setup.ps1"
+        result = subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-STA", "-NonInteractive",
+             "-ExecutionPolicy", "Bypass", "-File", str(f), "-SmokeTest"],
+            capture_output=True, timeout=30
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertIn(b"A4_GUI_SMOKE_OK", result.stdout)
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("powershell.exe"),
                          "PowerShell 5.1 is required")
     def test_powershell_parser_accepts_gui(self):
         f = ROOT / "quickstart" / "a4" / "setup.ps1"
