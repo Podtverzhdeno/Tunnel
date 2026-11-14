@@ -1,0 +1,23 @@
+# Hermes → MCP → existing Relay → Playwright/CDP (no extension)
+# Staging example. Keep this out of the currently running profile until tested.
+#
+# Hermes automatically discovers tools from mcp_servers at gateway start or
+# /reload-mcp; requires its optional Python MCP client SDK to be installed.
+#
+# Replace the command and script paths with the actual absolute paths in your
+# Windows project. No real Telegram or ChatGPT Web messages are enabled here.
+mcp_servers:
+  hermes_web_cdp:
+    enabled: true
+    command: "C:/PATH/TO/Hermes-WebGPT/.venv-cdp/Scripts/python.exe"
+    args:
+      - "C:/PATH/TO/Hermes-WebGPT/hermes_web_cdp_mcp.py"
+    env:
+      HERMES_CDP_FIXTURE_ONLY: "1"
+      # HERMES_CDP_FIXTURE_WORKER_KEY: use the temporary fixture-relay worker
+      # credential from the test harness, never a Telegram or OpenAI token.
+    timeout: 90
+    tools:
+      include:
+        - hermes_web_transport_status
+        - hermes_web_process_fixture_once
