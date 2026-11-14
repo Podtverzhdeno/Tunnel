@@ -27,3 +27,10 @@
 7. Выдать независимый вердикт с точными командами, returncode, логами и блокерами; Draft PR не мержить до 100% подтверждения.
 
 **Мой вывод по A4:** безопасный локальный кандидат собрать и проверить возможно, но production acceptance всё ещё не достигнута. Не трактовать прохождение тестов на рабочем ноутбуке как доказательство чистой установки.
+
+## Browser gate added after initial handoff
+
+- Source checker `extension_contract.py` and negative tests `test_extension_contract.py`: 9 PASS, 1 SKIP; it never installs anything or implies that a hash pin is owner approval.
+- Actual v0.8.5 AutoPilot is explicitly SAFE_DEMO: `production_candidate=false`, confirmed by local job `efa0a15e007e49ffa928893913d0a484`.
+- New A1/A5 acceptance contract: `BROWSER_RELEASE_GATE.md`.
+- Latest full Quickstart Windows regression: **170 tests, 162 PASS / 8 SKIP, exit 0**, job `5297ede717074945836179ba5ae76da9`.
