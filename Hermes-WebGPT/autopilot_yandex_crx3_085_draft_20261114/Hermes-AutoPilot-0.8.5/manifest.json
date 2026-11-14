@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Hermes AutoPilot — 5 Session Supervisor",
+  "short_name": "Hermes AutoPilot",
+  "version": "0.8.5",
+  "description": "Owner-triggered ChatGPT draft fill in fenced tabs; manual sending only; local media preview retained.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "http://127.0.0.1:18765/*",
+    "http://127.0.0.1:18763/*",
+    "http://127.0.0.1:18766/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

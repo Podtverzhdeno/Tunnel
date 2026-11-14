@@ -1,0 +1,38 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermes AutoPilot</title>
+<style>
+*{box-sizing:border-box}body{width:420px;max-height:620px;overflow-y:auto;margin:0;padding:16px;background:#101827;color:#f4f7fc;font:13px/1.4 system-ui,sans-serif}
+h1{font-size:19px;margin:0 0 4px}p{margin:4px 0 10px;color:#afbdcf}.tag{border:1px solid #5e7084;color:#c6d7ee;border-radius:18px;padding:3px 8px;font-size:11px;display:inline-block;margin-bottom:8px}
+label{display:block;font-weight:650;margin:10px 0 4px}textarea{width:100%;border-radius:8px;border:1px solid #526079;background:#1c2738;color:#fff;padding:9px;resize:vertical;font:12px/1.4 ui-monospace,monospace}
+button{border:0;border-radius:7px;color:white;background:#336fc0;padding:8px 11px;margin:5px 3px 4px 0;cursor:pointer;font-weight:600}button.secondary{background:#384860}button.danger{background:#a13740}button:disabled{opacity:.45;cursor:not-allowed}.slot{overflow-wrap:anywhere}.slot button{font-size:11px;padding:5px 7px}.slot-content{min-width:0;flex:1}.warnings{border-left:3px solid #edb66b;padding:7px 9px;color:#f6d4a5;background:#292b35;white-space:pre-wrap}.hidden{display:none}
+#message{white-space:pre-wrap;max-height:80px;overflow:auto;background:#1a2736;padding:9px;border-radius:7px;margin:8px 0;color:#e1e8f5}
+.summary{padding:9px;border:1px solid #47566b;border-radius:8px;margin:7px 0}#slots{display:grid;grid-template-columns:1fr;gap:6px}.slot{display:flex;gap:8px;align-items:center;background:#1d2939;border-radius:7px;padding:8px}.slot .n{display:inline-flex;justify-content:center;align-items:center;border-radius:50%;background:#34517d;width:26px;height:26px;flex-shrink:0}.slot .detail{font-size:11px;color:#b9c4d4}.small{font-size:11px;color:#aebdd1}.row{display:flex;flex-wrap:wrap;gap:4px}select{background:#1c2738;color:white;border:1px solid #526079;border-radius:6px;padding:6px}#queue{white-space:pre-wrap}
+</style></head><body>
+<h1>Hermes AutoPilot <span style="font-size:12px;font-weight:400">v0.8.5</span></h1><div class="tag">SAFE DEMO · до 5 черновиков · отправка вручную</div>
+<p>Открывает только выбранное число вкладок (1–5), распределяет задания и безопасно подготавливает черновики после проверки ChatGPT. Отправка и чтение настоящих ответов пока требуют подключения проверенного транспорта Web Companion. Незавершённые вкладки не закрываются автоматически.</p>
+<label for="goal">Цель</label><textarea id="goal" rows="2" placeholder="Проверенный итог проекта"></textarea>
+<label for="plan">Задачи JSON: id, prompt, acceptance, depends_on, resources, priority?, estimatedEffort?</label>
+<textarea id="plan" rows="7" spellcheck="false" placeholder='[{"id":"t1","prompt":"Реализовать API","acceptance":["Тесты зелёные"],"resources":["api"]}]'></textarea>
+<div class="row" style="align-items:center"><label for="max-concurrent" style="margin-right:8px">Одновременных задач</label><select id="max-concurrent" aria-label="Лимит параллелизма"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option></select><button id="apply-concurrency" class="secondary" disabled>Применить лимит</button></div>
+<div class="row"><button id="preview" class="secondary">Проверить план</button><button id="start">Открыть 5 вкладок</button><button id="retry" class="secondary">Продолжить запуск</button><button id="draft-all" class="secondary" disabled>Заполнить все черновики</button></div>
+<div class="row"><button id="pause" class="secondary">Пауза</button><button id="resume" class="secondary">Продолжить</button><button id="refresh" class="secondary">Обновить</button></div>
+<div class="row"><button id="export" class="secondary">Экспорт запуска</button><button id="rescue" class="secondary">Аварийный экспорт</button><button id="diagnostics" class="secondary">Диагностика</button><button id="timeline" class="secondary">Журнал событий</button><button id="watchdog" class="secondary" disabled>Проверить зависания</button><button id="stop" class="danger">Остановить</button></div>
+<div class="row"><button id="companion-probe" class="secondary">Проверить Hermes / Web Companion</button></div>
+<div id="companion-status" class="summary" style="white-space:pre-wrap" role="status" aria-live="polite">Локальная связь с Hermes ещё не проверена. Проверка ничего не отправляет.</div>
+<div class="row"><button id="relay-capacity-probe" class="secondary">Ёмкость Hermes Relay</button></div>
+<div id="relay-capacity-status" class="summary" style="white-space:pre-wrap" role="status" aria-live="polite">Доступные каналы Relay ещё не проверены. 5 вкладок не означают 5 параллельных запросов.</div>
+<div class="row"><button id="turn-preview" class="secondary">Подготовить turn_id выбранной задачи</button></div>
+<div id="turn-preview-status" class="summary" style="white-space:pre-wrap" role="status" aria-live="polite">Предварительная привязка к Relay не создаёт запрос и не отправляет сообщение.</div>
+<section aria-label="Безопасная проверка вложения">
+<label for="media-file">Локальная проверка вложения (PNG, JPEG, WebP, PDF, TXT, CSV)</label>
+<input id="media-file" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.csv" aria-label="Выбрать файл для проверки"/>
+<div class="row"><button id="media-preview" class="secondary" type="button">Проверить вложение без отправки</button></div>
+<div id="media-preview-status" class="summary" style="white-space:pre-wrap" role="status" aria-live="polite">Выбери активную задачу и файл. Проверка проходит локально, ничего не загружается в ChatGPT или Telegram.</div>
+</section>
+<div id="diagnostic-output" class="warnings hidden"></div>
+<label for="assignment">Назначение выбранного агента (ручное копирование)</label><textarea id="assignment" rows="3" readonly placeholder="Выбери назначение в карточке агента"></textarea>
+<label for="approval-note">Заметка для ручной приёмки / восстановления</label><textarea id="approval-note" rows="2" placeholder="Укажи проверенный результат: артефакт, тест, факт выполнения"></textarea>
+<button id="approve" class="secondary" disabled>Подтвердить выбранную задачу</button>
+<div id="message" role="status" aria-live="polite">Загрузка состояния…</div><div id="summary" class="summary">Нет запуска</div><div id="queue" class="summary" aria-live="polite">Очередь не запущена</div><div id="slots"></div>
+<p class="small">При остановке закрываются только вкладки с подтверждённым владением. Использование новых чатов для обхода лимитов не поддерживается.</p>
+<script src="popup.js"></script></body></html>
