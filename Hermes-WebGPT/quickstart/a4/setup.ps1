@@ -413,7 +413,9 @@ $devHealth.Add_Click({
         if ($report.local_ready -ne $true) {
             throw 'Локальная готовность не подтверждена'
         }
-        if ($report.relay_three_slot_capacity_verified -eq $true) {
+        if ($report.relay_loaded_build_status -eq 'DISK_CHANGED_AFTER_RELAY_START') {
+            $status.Text='DEV: Relay на старом коде. Дисковые файлы изменились; нужен отдельный safe restart.'
+        } elseif ($report.relay_three_slot_capacity_verified -eq $true) {
             $status.Text='MCP/Tunnel/Relay/Gateway: OK; Relay 3 слота. Browser E2E не проверен.'
         } else {
             $status.Text='MCP/Tunnel/Relay/Gateway: OK; 3 слота Relay не подтверждены.'
