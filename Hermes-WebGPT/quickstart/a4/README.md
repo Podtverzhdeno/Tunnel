@@ -2,6 +2,12 @@
 
 Updated 2026-11-14. **Production: NOT READY.** The configuration wizard is a working code candidate, but does not yet launch a security-enforced live MCP environment. The existing 28-tool MCP/Telegram runtime on the user's PC must not be silently replaced.
 
+## Local development mode (explicit owner opt-in)
+
+**DEV startup is unblocked.** Double-click `Start-Hermes-DEV.cmd` or use the DEV button in the Windows wizard. The `-DevMode` switch bypasses only the A4 installer stop gate; it does not grant extra Windows rights or change existing MCP credentials/permissions. The original `Start-Hermes-All.cmd` remains guarded.
+
+Instructions and evidence: `quickstart/a4/DEV_MODE.md`. Keep **DEV readiness** separate from **production acceptance**: A5 sign-off and the scoped broker are not launch requirements for local development. GUI `read_only` is not an effective restriction on the current 28-tool MCP in DEV mode.
+
 ## Candidate source files
 
 - `Setup-Hermes-A4.cmd` — double-click opens PowerShell 5.1 / WinForms UI for Windows 10/11.
