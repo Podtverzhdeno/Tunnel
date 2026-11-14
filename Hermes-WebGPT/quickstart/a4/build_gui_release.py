@@ -16,7 +16,13 @@ import tempfile
 from .release_manager import ReleaseError, VERSION, _ensure_dir
 
 ROOT=Path(__file__).resolve().parents[2]
-SOURCE_FILES=("Setup-Hermes-A4.cmd","quickstart/a4/setup.ps1")
+# Setup-Hermes-A4.cmd invokes release_launch.ps1; excluding it creates a
+# candidate that validates by hash but cannot be opened via its own CMD.
+SOURCE_FILES=(
+    "Setup-Hermes-A4.cmd",
+    "quickstart/a4/release_launch.ps1",
+    "quickstart/a4/setup.ps1",
+)
 
 
 def build(version: str,destination: Path) -> dict:
