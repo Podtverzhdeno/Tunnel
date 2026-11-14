@@ -30,7 +30,7 @@ python -m unittest discover -s quickstart -p "test_*.py" -t . -v
 python quickstart/inspect_dryrun_readonly.py
 ```
 
-Local Windows result 2026-11-14: 64 enumerated; **62 PASS, 2 SKIP** (Windows symlink privilege), exit code 0. Job `6b0485542e1d4be0b2cadf4d5ff56721`. The generated observer config was also exercised against the installed native MCP host, which correctly exposed only six read-only tools. Synthetic real stdio MCP E2E confirms a denied write never reaches the backend. A synthetic DPAPI encrypted-storage roundtrip passed without revealing a real key. Existing OneClick was checked in DryRun (no process restart).
+Local Windows result 2026-11-14: 65 enumerated; **63 PASS, 2 SKIP** (Windows symlink privilege), exit code 0. Job `e0f3fb83b672406daa7fe6be7eeffa77`. The legacy launcher was also proven to fail closed (exit code 2) when a user has selected unverified A4 permissions, without launching a new runtime. The generated observer config was also exercised against the installed native MCP host, which correctly exposed only six read-only tools. Synthetic real stdio MCP E2E confirms a denied write never reaches the backend. A synthetic DPAPI encrypted-storage roundtrip passed without revealing a real key. Existing OneClick was checked in DryRun (no process restart).
 
 ## A4 acceptance backlog (handoff to A5)
 
