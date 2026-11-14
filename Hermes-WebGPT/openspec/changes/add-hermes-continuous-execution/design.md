@@ -110,6 +110,12 @@ without Send and with the existing one-shot draft fence.
   in a separate parent Git repo; do NOT switch the dirty shared
   `IdeaProjects/main` branch.
 
+### AutoPilot default Chat fallback (2026-11-14)
+
+**FR-AP-011 — no-toggle readiness:** WHEN the ChatGPT home page renders a visible single editor but does not show a Chat/Work mode selector, AutoPilot MAY consider Chat confirmed only if that exact visible editor has an explicitly allowlisted Chat placeholder (`Ask anything`, `Ask ChatGPT`, `Message ChatGPT`, or supported Russian equivalents). A Work placeholder SHALL be treated as Work, and unknown placeholder SHALL remain blocked. This fallback SHALL NOT apply on saved `/c/...` conversations without independently verified Chat mode and Relay ownership. No Send is permitted by this observation alone.
+
+Evidence: real Yandex binary, disposable profile, synthetic HTML at ChatGPT origin, `run_yandex_no_toggle.py`, job `35dcc93506cf40d7976991bf10d71bbc` PASS. Values: `chat_without_toggle_ready=true`, `work_without_toggle_blocked=true`, `unknown_without_toggle_blocked=true`, `no_send=true`, `tabs_open=1`. **Not a real ChatGPT model E2E.**
+
 ### Additional review hardening (2026-11-14)
 
 - **FR-AP-002 negative:** WHEN Work→Chat is requested, THEN the successful later READY result MUST carry `modeSwitchRequested=true` and increment the persisted per-tab attempt counter, preventing repeated mode clicks across monitoring cycles.

@@ -87,11 +87,23 @@ export function inspectChatComposer(options = {}) {
       (placeholder==='chat' && workSelected!==true);
     if(!chatModeConfirmed)return out('MODE_SELECTION_UNVERIFIED');
   }else {
-    // On saved /c/ conversations the mode toggle can disappear. An
-    // editable composer is NOT proof that the same Chat mode persisted.
-    // A trusted Web Companion lease may establish that separately.
+    // ChatGPT may render a simple Chat composer without a visible toggle.
+    // Its exact official Chat placeholder is stronger evidence than just
+    // contenteditable, but a saved /c/ document requires a trusted lease.
     const login=controls.some(x=>/^(войти|log in|sign in)$/.test(label(x)));
-    return out(login?'AUTH_REQUIRED':'MODE_CONTROL_NOT_VERIFIED');
+    if(login)return out('AUTH_REQUIRED');
+    if(location.pathname!=='/')return out('MODE_CONTROL_NOT_VERIFIED');
+    const nodes=[...document.querySelectorAll(
+      '#prompt-textarea,[data-testid="composer-input"]')].filter(visible);
+    if(nodes.length!==1)return out('MODE_CONTROL_NOT_VERIFIED');
+    const values=[...new Set([nodes[0],...nodes[0].querySelectorAll(
+      '[data-placeholder],[placeholder],[aria-placeholder]')])].flatMap(el=>
+      ['data-placeholder','placeholder','aria-placeholder']
+        .map(k=>(el.getAttribute(k)||'').trim().toLowerCase()).filter(Boolean));
+    if(values.some(v=>/^(работайте с chatgpt|work with chatgpt)$/.test(v)))
+      return out('WORK_MODE');
+    chatModeConfirmed=values.some(v=>/^(спросить chatgpt|спросите chatgpt|спросите что угодно|ask chatgpt|ask anything|message chatgpt)$/.test(v));
+    if(!chatModeConfirmed)return out('MODE_CONTROL_NOT_VERIFIED');
   }
 
   const byId=[...document.querySelectorAll('#prompt-textarea')].filter(visible);

@@ -53,6 +53,8 @@
 - [x] A1. Run actual Yandex binary, synthetic-origin negative Chat-mode fixture: PASS, job `f4cfe90eb1014e3185808c59ed858819`, 0 Send. Do not count this as live E2E.
 - [ ] A2/A3. Add trusted, durable reconciliation that clears the worker marker only after independent Relay sender/response evidence, with a release test across Chrome MV3 restart; do not expose an unauthenticated override.
 
+- [x] A1. Cover ChatGPT home-page editor without a visible mode toggle using a strict Chat-placeholder allowlist; unknown and Work placeholders blocked. Actual Yandex synthetic-browser test PASS (`35dcc93506cf40d7976991bf10d71bbc`). Live signed-in E2E remains OPEN.
+
 ### Additional engineering tasks
 - [ ] AutoPilot-Web Companion compatibility matrix keyed by extension ID,
   manifest version, source SHA and owner documentId; refuse unknown versions.
