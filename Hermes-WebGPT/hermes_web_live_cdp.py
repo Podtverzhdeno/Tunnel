@@ -191,12 +191,49 @@ async def preflight_page(page, chat_url: str, prompt: str):
         raise
 
 
+_JSON_FENCE = re.compile(r"\A\`\`\`(?:json)?\r?\n(?P<body>[\s\S]+?)\r?\n\`\`\`\Z", re.IGNORECASE)
+
+
+def parse_request_bound_json(raw: str, request_id: str) -> str | None:
+    """Accept one exact JSON object, optionally wrapped by a single JSON fence.
+
+    Never fish an object out of explanatory text, and never use a mismatched
+    request ID. Return the exact JSON body, not the Markdown wrapper, since
+    Relay performs a separate schema and request identity validation.
+    """
+    if not isinstance(raw, str) or len(raw) > MAX_RESPONSE_CHARS:
+        return None
+    body = raw.strip()
+    fenced = _JSON_FENCE.fullmatch(body)
+    if fenced:
+        body = fenced.group("body").strip()
+    try:
+        item = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if (not isinstance(item, dict)
+            or item.get("request_id") != request_id
+            or not isinstance(item.get("content"), (str, type(None)))
+            or not isinstance(item.get("tool_calls"), list)):
+        return None
+    return body
+
+
 async def await_reply(page, chat_url: str, request_id: str, previous_assistants: int,
                       previous_users: int, timeout_s: int = 180) -> str:
     assistant = page.locator('[data-message-author-role="assistant"]')
     user = page.locator('[data-message-author-role="user"]')
-    started = asyncio.get_running_loop().time()
-    while asyncio.get_running_loop().time() - started < timeout_s:
+    stop = page.locator(
+        'button[data-testid="stop-button"]:visible, '
+        'button[aria-label="Stop generating"]:visible, '
+        'button[aria-label="Остановить генерацию"]:visible, '
+        'button[aria-label="Остановить"]:visible'
+    )
+    clock = asyncio.get_running_loop()
+    started = clock.time()
+    stable_payload = None
+    stable_since = None
+    while clock.time() - started < timeout_s:
         if page.is_closed() or not same_chat(page.url, chat_url):
             raise LiveCDPFault("page_closed_or_conversation_changed")
         # A send needs precisely one *new* request-bound user turn before
@@ -209,19 +246,25 @@ async def await_reply(page, chat_url: str, request_id: str, previous_assistants:
             visible_user = (await user.last.inner_text(timeout=3000)).strip()
             if request_id not in visible_user:
                 raise LiveCDPFault("new_user_turn_request_mismatch")
-        if user_count == previous_users + 1 and await assistant.count() > previous_assistants:
+        assistant_count = await assistant.count()
+        if assistant_count > previous_assistants + 1:
+            raise LiveCDPFault("concurrent_assistant_turns_unverified")
+        if user_count == previous_users + 1 and assistant_count == previous_assistants + 1:
             raw = (await assistant.last.inner_text(timeout=3000)).strip()
             if len(raw) > MAX_RESPONSE_CHARS:
                 raise LiveCDPFault("response_too_large")
-            try:
-                item = json.loads(raw)
-            except (ValueError, TypeError):
-                item = None  # still generating; do not issue another Send
-            if (isinstance(item, dict) and item.get("request_id") == request_id
-                and isinstance(item.get("content"), (str, type(None)))
-                and isinstance(item.get("tool_calls"), list)):
-                return raw
-        await asyncio.sleep(0.75)
+            candidate = parse_request_bound_json(raw, request_id)
+            # A complete-looking JSON substring is not a completed inference.
+            # Wait until the explicit generating control disappears and the
+            # exact envelope remains unchanged for >1.5s.
+            if candidate is not None and await stop.count() == 0:
+                if candidate != stable_payload:
+                    stable_payload, stable_since = candidate, clock.time()
+                elif stable_since is not None and clock.time() - stable_since >= 1.5:
+                    return candidate
+            else:
+                stable_payload, stable_since = None, None
+        await asyncio.sleep(0.5)
     raise LiveCDPFault("assistant_timeout_no_replay")
 
 
