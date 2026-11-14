@@ -33,6 +33,7 @@ class Selector:
             "editor": 1,
             "button": 1,
             "stop": int(self.page.streaming),
+            "code": int(self.page.rendered_code_reply),
             "assistant": self.page.assistants,
             "user": self.page.users
         }[self.kind]
@@ -82,9 +83,21 @@ class Selector:
         })
         if self.page.fenced_reply:
             self.page.answer = "```json\n" + self.page.answer + "\n```"
+        if self.page.rendered_code_reply:
+            self.page.code_json = self.page.answer
+            self.page.answer = "json\n" + self.page.answer + "\nCopy code"
+            if self.page.rendered_code_extra:
+                self.page.answer = "Explanation follows:\n" + self.page.answer
 
     async def inner_text(self, timeout=None):
+        if self.kind == "code":
+            return self.page.code_json
         return self.page.user_visible_text if self.kind == "user" else self.page.answer
+
+    def locator(self, selector):
+        if selector == "pre code":
+            return Selector(self.page, "code")
+        raise AssertionError("unexpected_nested_selector: " + selector)
 
 
 class Page:
@@ -104,6 +117,9 @@ class Page:
         self.user_visible_text = ""
         self.streaming = False
         self.fenced_reply = False
+        self.rendered_code_reply = False
+        self.rendered_code_extra = False
+        self.code_json = ""
 
     def is_closed(self):
         return self.closed
@@ -223,6 +239,30 @@ class LiveTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["outcome"], "done")
         self.assertEqual(page.clicks, 1)
         self.assertEqual(self.queue.read(self.rid)["state"], "done")
+
+    async def test_rendered_codeblock_reply_is_accepted(self):
+        # The live ChatGPT Markdown renderer can display code as <pre><code>,
+        # with a language header and Copy button outside the code content.
+        page = Page(CHAT, self.rid)
+        page.rendered_code_reply = True
+        result = await self.run_case([page])
+        self.assertEqual(result["outcome"], "done")
+        self.assertEqual(page.clicks, 1)
+        self.assertEqual(self.queue.read(self.rid)["state"], "done")
+
+    async def test_rendered_codeblock_with_explanatory_prose_is_not_accepted(self):
+        page = Page(CHAT, self.rid)
+        page.rendered_code_reply = True
+        page.rendered_code_extra = True
+        async def connector(_):
+            return Browser([page])
+        result = await execute_attached_once(
+            self.http, CDP, CHAT, self.journal,
+            browser_connector=connector, timeout_s=1
+        )
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(page.clicks, 1)
+        self.assertEqual(self.queue.read(self.rid)["state"], "uncertain")
 
     async def test_valid_json_while_generating_must_not_commit(self):
         page = Page(CHAT, self.rid)
