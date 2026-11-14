@@ -19,7 +19,7 @@ if ($null -ne $screen -and $screen.WorkingArea.Height -gt 500) {
     $f.Height=[Math]::Max(500,[Math]::Min(825,$screen.WorkingArea.Height-55))
 }
 $f.AutoScroll=$true
-$f.AutoScrollMinSize=New-Object Drawing.Size(645,1085)
+$f.AutoScrollMinSize=New-Object Drawing.Size(645,1170)
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
     $a=New-Object Windows.Forms.Label
@@ -419,10 +419,43 @@ $devHealth.Add_Click({
     }
 })
 $f.Controls.Add($devHealth)
+$yandexHealth=New-Object Windows.Forms.Button
+$yandexHealth.Text='DEV: почему вкладки Яндекса не работают?'
+$yandexHealth.Left=22;$yandexHealth.Top=975;$yandexHealth.Width=615;$yandexHealth.Height=34
+$yandexHealth.Add_Click({
+    try {
+        $python=Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $python) { throw 'Python не найден.' }
+        $lines=& $python.Source -m quickstart.a4.yandex_handoff_readiness --json
+        if ($LASTEXITCODE -ne 0) { throw 'Диагностика Яндекса недоступна.' }
+        $report=($lines | Select-Object -Last 1) | ConvertFrom-Json
+        switch ($report.status) {
+            'NO_CONTENT_SCRIPT_HANDOFF' {
+                $status.Text='Не найден handoff во вкладку AutoPilot. Отправка не подтверждена.'
+            }
+            'SAFE_DEMO_NO_AUTOMATIC_SEND' {
+                $status.Text='AutoPilot: SAFE_DEMO, автоматической отправки нет.'
+            }
+            'HANDOFF_NOT_LIVE_VERIFIED' {
+                $status.Text='AutoPilot найден. Реальная отправка в ChatGPT ещё не проверена.'
+            }
+            'AUTOPILOT_NOT_REGISTERED' {
+                $status.Text='AutoPilot не найден в профиле Яндекса.'
+            }
+            default {
+                $status.Text='Статус AutoPilot неизвестен. Проверьте диагностику.'
+            }
+        }
+    } catch {
+        $status.Text='Не удалось проверить Яндекс. DEV запуск доступен.'
+    }
+})
+$f.Controls.Add($yandexHealth)
 if ($SmokeTest) {
     if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
         -not $save.Enabled -or -not $recover.Enabled -or
-        -not $devLaunch.Enabled -or -not $devHealth.Enabled) {
+        -not $devLaunch.Enabled -or -not $devHealth.Enabled -or
+        -not $yandexHealth.Enabled) {
         throw 'a4_gui_control_construction_failed'
     }
     $f.Dispose()
