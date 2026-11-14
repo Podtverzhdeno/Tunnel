@@ -61,6 +61,35 @@ This is NOT a claim of live ChatGPT or Telegram end-to-end delivery.
   job `e0fbd04ee6bc4d2ab2156fdb977f46cf`, rc0.
   Both modes use the same real MCP sidecar and same browser executor.
 
+## Streaming and Markdown robustness (continued verification)
+
+- RED witness job `39226ebca9d54d7db4ec4a4fd08bf225`, rc1:
+  2 expected failures: a single fenced `json` reply was left uncertain;
+  a complete-looking JSON reply was wrongly marked done while the browser
+  still showed a generation-in-progress control.
+- GREEN focused job `5297cbf0f45c45ceaa9375d43a064420`, rc0,
+  both formerly failing tests PASS.
+- Worker now parses only a complete JSON body or one exact fenced JSON
+  block, with strict Relay request-id/schema validation. It waits for the
+  visible Stop-generation control to disappear and the exact response to
+  remain stable for >=1.5 seconds before sending Relay `saved/result` ACK.
+  If the model keeps generating, result remains `uncertain`; NO retry.
+- Real Edge + Playwright + ephemeral Relay HTTP DOM fixture:
+  job `884621348ec743bba2522798af13bc31`, rc0,
+  **6/6 cases PASS**: regular ready/done, fenced JSON/done,
+  streamed JSON/done only after Stop hidden, login challenge/blocked,
+  absent new user/uncertain, foreign user/uncertain. No ChatGPT network.
+- Current worker/sidecar/launcher/preflight tests:
+  job `29050855e8e74ef5b4c4aabe673c5274`, rc0,
+  **26/26 PASS**, zero failures.
+- The installed Hermes CLI model cycle still passes with the new worker:
+  job `fd12e70d07aa4fa79017ed6dd4f0ad5d`, rc0,
+  one Send, one Relay done, model answer received by CLI.
+- Native Telegram SDK synthetic topic routing still passes:
+  job `386ab2a4c310411fa456728d61d58d49`, rc0,
+  one Send, Relay done, mock reply delivered in same synthetic
+  chat/topic 14. Zero actual Telegram Bot API messages.
+
 ## Live environment readiness
 Read-only `python -m hermes_mcp_cdp_preflight`:
 job `1a0263c925d14f14bf228f29caacc6ee`, rc0.
