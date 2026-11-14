@@ -42,6 +42,31 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(names, ["read_file", "search_text"])
         self.assertEqual(guard.pending_lists, set())
 
+    def test_unsolicited_backend_result_is_dropped(self):
+        guard = Guard(self.policy)
+        self.assertIsNone(guard.response({"jsonrpc": "2.0", "id": 777,
+                                          "result": {"tools": [{"name": "write_file"}]}}))
+
+    def test_duplicate_request_id_does_not_overwrite_pending_list(self):
+        guard = Guard(self.policy)
+        req = {"jsonrpc": "2.0", "id": 88, "method": "tools/list"}
+        self.assertTrue(guard.request(req)[0])
+        allowed, denial = guard.request(self.call("read_file", path="allowed/file") | {"id": 88})
+        self.assertFalse(allowed)
+        self.assertEqual(denial["error"]["message"], "duplicate_request_id")
+        self.assertEqual([x["name"] for x in guard.response({
+            "jsonrpc": "2.0", "id": 88,
+            "result": {"tools": [{"name": "read_file"}, {"name": "write_file"}]}})["result"]["tools"]],
+            ["read_file"])
+        self.assertIsNone(guard.response({"jsonrpc": "2.0", "id": 88, "result": {}}))
+
+    def test_correlated_call_response_passes_once(self):
+        guard = Guard(self.policy)
+        self.assertTrue(guard.request(self.call("read_file", path="allowed/file"))[0])
+        reply = {"jsonrpc": "2.0", "id": 42, "result": {"content": []}}
+        self.assertEqual(guard.response(reply), reply)
+        self.assertIsNone(guard.response(reply))
+
     def test_backend_cannot_request_client_sampling(self):
         guard = Guard(self.policy)
         self.assertIsNone(guard.response({
