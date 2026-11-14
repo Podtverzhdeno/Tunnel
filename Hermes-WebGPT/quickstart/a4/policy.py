@@ -11,11 +11,12 @@ from typing import Mapping, Any
 
 READ_TOOLS = frozenset({
     "list_directory", "directory_tree", "file_info", "read_file",
-    "read_binary", "search_text", "git_status", "git_diff", "git_log",
+    "read_binary", "search_text",
 })
+# Git 'status' may refresh its index; trash_path mutates a private trash
+# outside the selected root. Neither is treated as guaranteed scope-safe.
 SCOPED_WRITES = frozenset({
     "create_directory", "write_file", "replace_text", "move_path",
-    "trash_path",
 })
 # Executing code (even 'tests'), pushing Git, and arbitrary commands can write
 # outside a workspace. They require a separate OS-enforced sandbox, not a mode.
@@ -87,8 +88,15 @@ class Policy:
             target = (self.workspace_root / relative).resolve(strict=False)
             if not target.is_relative_to(self.scope):
                 raise AccessDenied("path_outside_scope")
-        if name == "search_text" and not isinstance(args.get("query"), str):
-            raise AccessDenied("invalid_query")
+        if name == "search_text":
+            if not isinstance(args.get("query"), str):
+                raise AccessDenied("invalid_query")
+            glob = args.get("filename_glob")
+            if glob is not None and (
+                not isinstance(glob, str) or not glob or ".." in glob
+                or "/" in glob or "\\" in glob or ":" in glob or "\x00" in glob
+            ):
+                raise AccessDenied("unsafe_filename_glob")
 
 
 def redact(value: str) -> str:
