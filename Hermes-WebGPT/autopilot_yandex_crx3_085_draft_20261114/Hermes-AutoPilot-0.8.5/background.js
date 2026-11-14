@@ -11,6 +11,7 @@ import {probeWebCompanionExtension} from './companion_external_probe.mjs';
 const RUN_KEY='hermesAutopilotRunV2';
 const OWNED_KEY='hermesAutopilotOwnedTabsV2';
 const DRAFT_KEY='hermesAutopilotDraftFencesV1';
+const TAB_CREATE_PREFIX='hermesAutopilotTabCreateIntentV1_';
 // Browser readiness metadata is owned by session_control_v1.mjs.
 const ALARM='hermes-autopilot-reconcile-v2';
 const CHAT_URL='https://chatgpt.com/';
@@ -63,11 +64,22 @@ async function bindMissingSlots(input){
  let run=input;
  for(const slot of run.slots){
   if(run.slots.findIndex(s=>s.id===slot.id)>=run.maxConcurrent||slot.tabId!==null||slot.phase!=='AWAITING_TAB')continue;
-  // Intent already persisted. Tab creation itself is not atomic with chrome.storage.
+  // Unknown creation outcomes are never retried without reconciliation.
+  // Durable one-shot fence before any browser-side tab creation.
+  const key=TAB_CREATE_PREFIX+run.id+'_'+slot.id;
+  if((await chrome.storage.local.get(key))[key]!==undefined)
+   throw Error('TAB_CREATE_UNKNOWN_RECONCILIATION_REQUIRED');
+  const marker={schema:1,state:'UNKNOWN_CREATE',runId:run.id,
+   workerId:slot.id,attemptId:crypto.randomUUID(),createdAt:Date.now()};
+  await chrome.storage.local.set({[key]:marker});
+  const recorded=(await chrome.storage.local.get(key))[key];
+  if(recorded?.state!=='UNKNOWN_CREATE'||recorded.attemptId!==marker.attemptId)
+   throw Error('TAB_CREATE_INTENT_UNCONFIRMED');
   const tab=await chrome.tabs.create({url:CHAT_URL,active:false});
   // Persist worker lease before tagging ownership; if interrupted here, fail closed.
   run=connectTab(run,slot.id,tab.id);await saveRun(run);
   await addOwned(run.id,slot.id,tab.id);
+  await chrome.storage.local.set({[key]:{...marker,state:'BOUND',tabId:tab.id}});
  }
  return run;
 }
@@ -77,7 +89,12 @@ async function archiveStoppedRun(previous){
  // Any still-open tab owned by a past run may contain an unsent draft
  // or unfinished conversation. It cannot be silently abandoned.
  for(const slot of previous.slots){
-  if(!Number.isInteger(slot.tabId))continue;
+  if(!Number.isInteger(slot.tabId)){
+   const key=TAB_CREATE_PREFIX+previous.id+'_'+slot.id;
+   if((await chrome.storage.local.get(key))[key]!==undefined)
+    throw Error('PREVIOUS_TAB_CREATE_OUTCOME_UNKNOWN');
+   continue;
+  }
   const ref=owned[String(slot.tabId)];
   // A lost volatile ownership record is not proof that this tab is closed.
   let live=false;

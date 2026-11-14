@@ -57,6 +57,9 @@
 
 - [x] A1. Fix transient `chrome.tabs.get` errors in `safeClose`: preserve ownership on unknown outcome; add negative test covering blocked restart and no duplicate tab. Test `ba618c6affe14d54919d6839da629190` PASS (1/1).
 
+- [x] A1. Prevent duplicate tabs when `chrome.tabs.create()` succeeds but its response is lost: persist/readback `UNKNOWN_CREATE`, forbid retries and new runs until reconciliation. Negative test `7351f2171fbd4e67ad505e76822bc163` PASS.
+- [ ] A1/A5. Implement a privileged, owner-reviewed reconciliation screen for orphan `UNKNOWN_CREATE` attempts without guessing ownership or deleting any active ChatGPT tab.
+
 ### Additional engineering tasks
 - [ ] AutoPilot-Web Companion compatibility matrix keyed by extension ID,
   manifest version, source SHA and owner documentId; refuse unknown versions.

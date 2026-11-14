@@ -120,6 +120,12 @@ Evidence: real Yandex binary, disposable profile, synthetic HTML at ChatGPT orig
 
 WHEN `chrome.tabs.get(tabId)` fails with a transient transport/permission/timeout error during safe-close, AutoPilot SHALL **retain** the session-ownership record and keep the tab's state unresolved. Only an explicit `No tab with id` / `Missing tab` / `tab not found` outcome MAY remove its stored ownership; a subsequent START SHALL not create duplicates while that tab still resolves. Negative Node test `test_safeclose_transient.mjs`, job `ba618c6affe14d54919d6839da629190`, PASS (1/1), return code 0.
 
+### FR-AP-013 — crash-safe tab creation intent
+
+BEFORE calling `chrome.tabs.create()`, AutoPilot SHALL persist a one-shot `UNKNOWN_CREATE` marker for its run and worker, then read back the exact attempt ID. Only after browser tab creation, durable worker slot binding and session ownership verification may the marker become `BOUND`. A lost tab-create response or MV3 crash SHALL block a second creation attempt and a new run while the result is unresolved. This is fail-closed; a future explicitly authorized reconciliation UI is still required to recover an unbound orphan without deleting user data.
+
+Evidence: `test_tab_create_unknown.mjs` job `7351f2171fbd4e67ad505e76822bc163` (1/1 PASS, rc 0): simulated browser creates a tab but loses the ACK, then RETRY_START and a subsequent new START are blocked with no additional tab creation.
+
 ### Additional review hardening (2026-11-14)
 
 - **FR-AP-002 negative:** WHEN Work→Chat is requested, THEN the successful later READY result MUST carry `modeSwitchRequested=true` and increment the persisted per-tab attempt counter, preventing repeated mode clicks across monitoring cycles.
