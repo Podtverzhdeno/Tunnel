@@ -60,6 +60,8 @@
 - [x] A1. Prevent duplicate tabs when `chrome.tabs.create()` succeeds but its response is lost: persist/readback `UNKNOWN_CREATE`, forbid retries and new runs until reconciliation. Negative test `7351f2171fbd4e67ad505e76822bc163` PASS.
 - [ ] A1/A5. Implement a privileged, owner-reviewed reconciliation screen for orphan `UNKNOWN_CREATE` attempts without guessing ownership or deleting any active ChatGPT tab.
 
+- [x] A1. Tighten safe-close URL predicate to real chat paths; never close `/auth/login` or fragment-bearing pages. Negative test `f269f3914be841d6ad24dd8feb6a3062` PASS.
+
 ### Additional engineering tasks
 - [ ] AutoPilot-Web Companion compatibility matrix keyed by extension ID,
   manifest version, source SHA and owner documentId; refuse unknown versions.

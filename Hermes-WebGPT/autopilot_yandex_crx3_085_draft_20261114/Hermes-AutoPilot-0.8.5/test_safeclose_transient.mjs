@@ -38,10 +38,13 @@ test("transient tabs.get must NOT delete owned IDLE tab lease",async()=>{
      url:"chrome-extension://ap-transient/popup.html"},resolve));
  const tasks=[{id:"task1",prompt:"Synthetic",acceptance:["Proof"],
    depends_on:[],resources:["fixture"]}];
- const started=await send("START",{goal:"preserve owned idle",tasks,maxConcurrent:2});
+ const started=await send("START",{goal:"preserve owned idle",tasks,maxConcurrent:3});
  assert.equal(started.ok,true,started.error);
  const run=db.hermesAutopilotRunV2;
  const idle=run.slots.find(s=>s.phase==="IDLE"&&s.tabId!==null);
+ const moved=run.slots.find(s=>s.phase==="IDLE"&&s.tabId!==null&&s.id!==idle?.id);
+ assert(moved,"expected a second idle tab");
+ tabs.get(moved.tabId).url="https://chatgpt.com/auth/login";
  assert(idle,"expected a second IDLE tab");
  failingId=idle.tabId;
  const ownerBefore=session.hermesAutopilotOwnedTabsV2[String(idle.tabId)];
@@ -50,6 +53,7 @@ test("transient tabs.get must NOT delete owned IDLE tab lease",async()=>{
  assert.equal(stopped.ok,true,stopped.error);
  assert.equal(stopped.result.stopped,true);
  assert(stopped.result.details.some(d=>d.workerId===idle.id&&d.closed===false));
+ assert(stopped.result.details.some(d=>d.workerId===moved.id&&d.closed===false));
  assert.equal(removeCalls,0);
  assert.equal(session.hermesAutopilotOwnedTabsV2[String(idle.tabId)].workerId,idle.id);
  assert.equal(tabs.has(idle.tabId),true);
@@ -57,5 +61,5 @@ test("transient tabs.get must NOT delete owned IDLE tab lease",async()=>{
  const another=await send("START",{goal:"duplicate run",tasks,maxConcurrent:2});
  assert.equal(another.ok,false);
  assert.match(another.error,/PREVIOUS_RUN_TABS_STILL_OPEN_REQUIRES_REVIEW/);
- assert.equal(tabs.size,2);
+ assert.equal(tabs.size,3);
 });

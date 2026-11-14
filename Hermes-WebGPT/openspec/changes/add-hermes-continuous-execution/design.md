@@ -126,6 +126,10 @@ BEFORE calling `chrome.tabs.create()`, AutoPilot SHALL persist a one-shot `UNKNO
 
 Evidence: `test_tab_create_unknown.mjs` job `7351f2171fbd4e67ad505e76822bc163` (1/1 PASS, rc 0): simulated browser creates a tab but loses the ACK, then RETRY_START and a subsequent new START are blocked with no additional tab creation.
 
+### FR-AP-014 — exact ChatGPT close path
+
+WHEN a worker tab navigates from a ChatGPT chat to a same-origin login, help, account or other non-chat route, AutoPilot SHALL retain the tab and ownership without closing it. A fragment-bearing ChatGPT URL also SHALL NOT qualify as a verified chat page. Allowed close routes: exactly `/` or `/c/<conversation-id>` without fragment. Negative Node check in `test_safeclose_transient.mjs` (job `f269f3914be841d6ad24dd8feb6a3062`, PASS): an auth-redirect tab and a transient-error tab both remain open.
+
 ### Additional review hardening (2026-11-14)
 
 - **FR-AP-002 negative:** WHEN Work→Chat is requested, THEN the successful later READY result MUST carry `modeSwitchRequested=true` and increment the persisted per-tab attempt counter, preventing repeated mode clicks across monitoring cycles.

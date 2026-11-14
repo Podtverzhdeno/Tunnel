@@ -24,7 +24,14 @@ async function addOwned(runId,workerId,tabId){const owned=await readOwned();owne
 async function removeOwned(tabId){const owned=await readOwned();delete owned[String(tabId)];await chrome.storage.session.set({[OWNED_KEY]:owned});}
 const sessions=createSessionController({chromeAPI:chrome,readRun,readOwned,safeClose,
   probeCompanion:()=>probeWebCompanionExtension({runtime:chrome.runtime})});
-const isChatURL=value=>{try{return typeof value==='string'&&value.length>0&&new URL(value).origin==='https://chatgpt.com';}catch{return false;}};
+const isChatURL=value=>{
+ try{
+  if(typeof value!=='string'||!value)return false;
+  const u=new URL(value);
+  return u.origin==='https://chatgpt.com' && !u.hash &&
+    (u.pathname==='/'||/^\/c\/[A-Za-z0-9_-]+\/?$/.test(u.pathname));
+ }catch{return false;}
+};
 const isChatTab=tab=>{
  const active=tab?.url||'',pending=tab?.pendingUrl||'';
  // Chrome can temporarily return an empty URL or about:blank while the ChatGPT
