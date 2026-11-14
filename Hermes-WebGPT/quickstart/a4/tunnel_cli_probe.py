@@ -40,6 +40,37 @@ def inventory() -> dict:
     top=clean_help(match,"--help")
     runtimes=clean_help(match,"runtimes","--help")
     connect=clean_help(match,"runtimes","connect","--help")
+    listing=clean_help(match,"runtimes","list","--help")
+    status=clean_help(match,"runtimes","status","--help")
+    # Shape inspection only: never disclose runtime IDs, tokens or aliases.
+    schema={"status":"unavailable"}
+    if "--json" in listing:
+        try:
+            result=subprocess.run([str(match),"runtimes","list","--json"],
+                                  capture_output=True,timeout=8)
+            if result.returncode==0:
+                document=json.loads(result.stdout)
+                if isinstance(document,dict):
+                    schema={"status":"ok","type":"object",
+                            "keys":sorted(document.keys())[:20]}
+                    aliases=document.get("aliases")
+                    schema["aliases_shape"]=(
+                        "mapping" if isinstance(aliases,dict) else
+                        "array" if isinstance(aliases,list) else
+                        type(aliases).__name__
+                    )
+                    schema["aliases_count"]=(
+                        len(aliases) if isinstance(aliases,(dict,list)) else None)
+                elif isinstance(document,list):
+                    schema={"status":"ok","type":"array","count":len(document),
+                            "item_keys":sorted(document[0].keys())[:20]
+                            if document and isinstance(document[0],dict) else []}
+                else:
+                    schema={"status":"unexpected_type"}
+            else:
+                schema={"status":"command_error"}
+        except (OSError,subprocess.TimeoutExpired,ValueError):
+            schema={"status":"read_failed"}
     return {
         "found":True,
         "version_first_line":version.splitlines()[0][:85] if version else "unknown",
@@ -47,6 +78,10 @@ def inventory() -> dict:
         "supports_runtime_api_key_env":"--runtime-api-key" in connect,
         "supports_mcp_server_url":"--mcp-server-url" in connect,
         "supports_alias":"--alias" in connect,
+        "supports_list_json":bool(listing.strip()) and "--json" in listing,
+        "supports_status_json":bool(status.strip()) and "--json" in status,
+        "runtimes_list_in_help":"list" in runtimes.lower(),
+        "list_schema":schema,
         "help_available":bool(top.strip()),
     }
 
