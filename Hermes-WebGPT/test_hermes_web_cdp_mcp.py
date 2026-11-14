@@ -119,6 +119,15 @@ class McpContractTests(unittest.TestCase):
         self.assertEqual([frame["id"] for frame in frames], [101,102,103])
         self.assertEqual(len(frames[1]["result"]["tools"]), 2)
 
+    def test_malformed_initialize_parameters_are_not_fatal(self):
+        for params in ([], None, 1, "unexpected"):
+            with self.subTest(params=params):
+                response = bridge.dispatch({"jsonrpc": "2.0", "id": 1,
+                                            "method": "initialize", "params": params})
+                self.assertEqual(response["error"]["code"], -32602)
+        response = self.call("initialize", {"protocolVersion": {"bad": True}})
+        self.assertEqual(response["result"]["protocolVersion"], bridge.MCP_VERSION)
+
     def test_unknown_method_returns_jsonrpc_error(self):
         self.assertEqual(self.call("unrecognized")["error"]["code"], -32601)
         self.assertIsNone(bridge.dispatch({"jsonrpc": "2.0",
