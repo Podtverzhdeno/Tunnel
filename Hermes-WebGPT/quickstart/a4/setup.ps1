@@ -11,7 +11,7 @@ $browserCandidates = @((Join-Path $env:LOCALAPPDATA 'Yandex\YandexBrowser\Applic
 $browserDefault = ($browserCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1)
 if (-not $browserDefault) { $browserDefault = '' }
 $f = New-Object Windows.Forms.Form
-$f.Text='Hermes — установка и разрешения';$f.Width=680;$f.Height=765
+$f.Text='Hermes — установка и разрешения';$f.Width=680;$f.Height=825
 $f.StartPosition='CenterScreen';$f.MaximizeBox=$false;$f.FormBorderStyle='FixedDialog'
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
@@ -257,6 +257,60 @@ $runReadonly.Add_Click({
     }
 })
 $f.Controls.Add($runReadonly)
+$installCore=New-Object Windows.Forms.Button
+$installCore.Text='Установить ядро Hermes Agent (проверенная версия установщика)'
+$installCore.Left=22;$installCore.Top=680;$installCore.Width=616;$installCore.Height=33
+$script:CoreInstallProcess=$null
+$script:CoreInstallTimer=New-Object Windows.Forms.Timer
+$script:CoreInstallTimer.Interval=1500
+$script:CoreInstallTimer.Add_Tick({
+    if ($null -eq $script:CoreInstallProcess) { return }
+    if ($script:CoreInstallProcess.HasExited) {
+        $script:CoreInstallTimer.Stop()
+        $code=$script:CoreInstallProcess.ExitCode
+        $script:CoreInstallProcess.Dispose()
+        $script:CoreInstallProcess=$null
+        $installCore.Enabled=$true
+        if ($code -eq 0) {
+            $status.Text='Ядро Hermes установлено. MCP/Tunnel/Relay требуют отдельной проверки.'
+        } else {
+            $status.Text="Установка завершилась с ошибкой $code. Проверьте логи."
+        }
+    } else {
+        $status.Text='Установка ядра Hermes выполняется. Не запускайте второй установщик.'
+    }
+})
+$installCore.Add_Click({
+    try {
+        $installer=Join-Path $PSScriptRoot 'vendor\hermes-install.ps1'
+        $license=Join-Path $PSScriptRoot 'vendor\LICENSE.NousResearch'
+        $expected='31dd1373eae71908cac5326d4ffd8adc85d131ff509916df30b2836e4e231b0f'
+        if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $license -PathType Leaf)) {
+            throw 'Нет проверенного установщика Hermes или его лицензии.'
+        }
+        $actual=(Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $expected) { throw 'Проверка SHA-256 не пройдена. Установка отменена.' }
+        $confirmation=[Windows.Forms.MessageBox]::Show(
+            'Установить Hermes Agent в профиль пользователя? Будут загружены зависимости из доверенных источников. Яндекс Браузер и доступ ИИ не изменяются.',
+            'Hermes — установка','YesNo','Question')
+        if ($confirmation -ne 'Yes') { return }
+        if (-not (Test-Path -LiteralPath $state)) {
+            [void](New-Item -ItemType Directory -Path $state -Force)
+        }
+        $stamp=[DateTime]::UtcNow.ToString('yyyyMMddTHHmmss')
+        $stdout=Join-Path $state ("core-install-" + $stamp + ".stdout.log")
+        $stderr=Join-Path $state ("core-install-" + $stamp + ".stderr.log")
+        $argsLine='-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $installer + '" -NonInteractive -SkipBrowser -SkipComputerUse -Channel stable'
+        $script:CoreInstallProcess=Start-Process -FilePath 'powershell.exe' -ArgumentList $argsLine -WorkingDirectory $project -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $installCore.Enabled=$false
+        $status.Text='Установка запущена. Результат появится в этом окне.'
+        $script:CoreInstallTimer.Start()
+    } catch {
+        $status.Text='Установка не запущена. Проверьте контрольную сумму и доступ.'
+    }
+})
+$f.Controls.Add($installCore)
 if ($SmokeTest) {
     if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
         -not $save.Enabled -or -not $recover.Enabled) {
