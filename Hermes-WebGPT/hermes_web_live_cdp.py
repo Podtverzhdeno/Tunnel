@@ -10,6 +10,8 @@ repeated after intent/armed, even if the page or network fails.
 """
 from __future__ import annotations
 import asyncio
+from hashlib import sha256
+import os
 import json
 import re
 import sys
@@ -30,6 +32,44 @@ MAX_RESPONSE_CHARS = 150_000
 
 class LiveCDPFault(ValueError):
     pass
+
+
+class ChatSessionLease:
+    """Exclusive cross-process chat lease; uncertain Send remains fenced.
+
+    Only a hash of the conversation URL is recorded. A process crash or
+    ambiguous send leaves this file for explicit manual reconciliation.
+    """
+
+    def __init__(self, journal: SendJournal, chat_url: str):
+        if not isinstance(chat_url, str) or not CHAT_RE.fullmatch(chat_url):
+            raise LiveCDPFault("specific_chatgpt_conversation_required")
+        digest = sha256(chat_url.encode("utf8")).hexdigest()
+        self.path = journal.root / ("chat-" + digest + ".lease")
+        self.retain = False
+        self.owned = False
+
+    def __enter__(self):
+        try:
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError as exc:
+            raise LiveCDPFault("chat_session_busy_or_unreconciled") from exc
+        self.owned = True
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(b"chat_claimed\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self.owned and self.retain:
+            # Explicit uncertain Send: require manual reconciliation.
+            return False
+        if self.owned:
+            # A pre-claim/idle exception is not a browser effect. A hard
+            # process crash leaves the lease on disk, since __exit__ never runs.
+            self.path.unlink(missing_ok=True)
+        return False
 
 
 def validate_urls(relay_url: str, cdp_url: str, chat_url: str) -> None:
@@ -69,28 +109,48 @@ async def preflight_page(page, chat_url: str, prompt: str):
         raise LiveCDPFault("conversation_changed")
     if await page.locator("input[type=password]:visible, [role=dialog]:visible").count():
         raise LiveCDPFault("auth_or_dialog_present")
-    editors = page.locator("textarea:visible")
+    # ChatGPT Web may use either the ProseMirror contenteditable editor or
+    # a textarea. Never select arbitrary sidebar/document contenteditables.
+    editors = page.locator(
+        '#prompt-textarea[contenteditable="true"]:visible, '
+        '[data-testid="prompt-textarea"][contenteditable="true"]:visible, '
+        'textarea:visible'
+    )
     if await editors.count() != 1:
         raise LiveCDPFault("composer_not_unique")
     editor = editors.first
-    if not await editor.is_editable() or (await editor.input_value()).strip():
+    contenteditable = (await editor.get_attribute("contenteditable")) == "true"
+
+    async def text_in_editor():
+        return (await editor.inner_text()) if contenteditable else (
+            await editor.input_value())
+
+    if not await editor.is_editable() or (await text_in_editor()).strip():
         raise LiveCDPFault("composer_not_ready")
     if len(prompt) > 130_000:
         raise LiveCDPFault("prompt_too_large")
-    buttons = page.locator('button[aria-label*="Send"]:visible')
-    if await buttons.count() != 1 or not await buttons.first.is_enabled():
+    # Modern ChatGPT disables/hides Send until the prompt is filled.
+    await editor.fill(prompt, timeout=5000)
+    if await text_in_editor() != prompt or not same_chat(page.url, chat_url):
+        raise LiveCDPFault("composer_fill_unconfirmed")
+    buttons = page.locator(
+        'button[data-testid="send-button"]:visible, '
+        'button#composer-submit-button:visible, '
+        'button[aria-label*="Send"]:visible, '
+        'button[aria-label*="Отправить"]:visible'
+    )
+    if await buttons.count() != 1:
         raise LiveCDPFault("send_not_unique")
-    # The unique Send button must belong to the same form as the editor.
+    # The selected Send must belong to this exact editor's form.
     same_form = await editor.evaluate(
         """(edit) => { const form = edit.closest('form');
           return !!form && [...form.querySelectorAll('button')].some(
-            b => b.getAttribute('aria-label')?.includes('Send')); }""")
+            b => b.matches('[data-testid="send-button"], #composer-submit-button,'
+              + ' [aria-label*="Send"], [aria-label*="Отправить"]')
+              && !!b.getClientRects().length); }""")
     if not same_form:
         raise LiveCDPFault("composer_send_form_mismatch")
-    await editor.fill(prompt, timeout=5000)
-    if await editor.input_value() != prompt or not same_chat(page.url, chat_url):
-        raise LiveCDPFault("composer_fill_unconfirmed")
-    if await buttons.count() != 1 or not await buttons.first.is_enabled():
+    if not await buttons.first.is_enabled() or not same_chat(page.url, chat_url):
         raise LiveCDPFault("send_changed_before_intent")
     return buttons.first
 
@@ -121,6 +181,19 @@ async def await_reply(page, chat_url: str, request_id: str, previous_assistants:
 
 
 async def execute_attached_once(http, cdp_url: str, chat_url: str, journal: SendJournal,
+                                *, browser_connector=None, timeout_s: int = 180) -> dict:
+    """Serialize a ChatGPT conversation BEFORE claiming a Relay job."""
+    with ChatSessionLease(journal, chat_url) as lease:
+        result = await _execute_claimed_once(
+            http, cdp_url, chat_url, journal,
+            browser_connector=browser_connector, timeout_s=timeout_s
+        )
+        if result.get("outcome") == "uncertain":
+            lease.retain = True
+        return result
+
+
+async def _execute_claimed_once(http, cdp_url: str, chat_url: str, journal: SendJournal,
                                 *, browser_connector=None, timeout_s: int = 180) -> dict:
     """Claim one routed Playwright request and use the pre-opened browser tab."""
     job = await get_one_job(http)
