@@ -9,6 +9,7 @@ Updated 2026-11-14. **Production: NOT READY.** The configuration wizard is a wor
 - `quickstart/a4/preflight.py` — no side effects: validates settings and loopback MCP/Tunnel/Relay health. Always reports real tool enforcement as **unverified** until transport is integrated and tested.
 - `quickstart/a4/policy.py` — deny-by-default allowlist for read-only and scoped file operations. Arbitrary commands, Git mutation and unsupported methods are denied.
 - `quickstart/a4/mcp_guard.py` — isolated MCP stdio guard; `tools/list` only advertises approved tools and `tools/call` checks mode/workspace/path.
+- `quickstart/a4/observer_profile.py` — prepares a minimal native read-only HTTP host config using only one selected workspace, no write/execute/git grants, and refuses to put the config inside the exposed workspace. It does **not** open a port or change the current full MCP route.
 - `quickstart/a4/recovery.py` — allowlisted backup/restore of setup settings and encrypted DPAPI blobs. A previous version may be restored without destroying the current bytes, which are saved as `.rollback-current`. No automatic state migration.
 - `quickstart/start.ps1` + `quickstart/services.py` — existing preconfigured service launcher accepts encrypted GUI Telegram token via current-user DPAPI → process environment. Existing `profile/.env` token takes precedence. Original guarded start workflow remains otherwise unchanged.
 
@@ -29,7 +30,7 @@ python -m unittest discover -s quickstart -p "test_*.py" -t . -v
 python quickstart/inspect_dryrun_readonly.py
 ```
 
-Local Windows result 2026-11-14: 59 enumerated; **57 PASS, 2 SKIP** (Windows symlink privilege), exit code 0. Job `a925f08ac46d4c18a6bb1b6e4d707247`. Synthetic real stdio MCP E2E confirms a denied write never reaches the backend. A synthetic DPAPI encrypted-storage roundtrip passed without revealing a real key. Existing OneClick was checked in DryRun (no process restart).
+Local Windows result 2026-11-14: 64 enumerated; **62 PASS, 2 SKIP** (Windows symlink privilege), exit code 0. Job `6b0485542e1d4be0b2cadf4d5ff56721`. The generated observer config was also exercised against the installed native MCP host, which correctly exposed only six read-only tools. Synthetic real stdio MCP E2E confirms a denied write never reaches the backend. A synthetic DPAPI encrypted-storage roundtrip passed without revealing a real key. Existing OneClick was checked in DryRun (no process restart).
 
 ## A4 acceptance backlog (handoff to A5)
 
