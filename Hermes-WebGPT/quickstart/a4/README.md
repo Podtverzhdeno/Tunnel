@@ -24,7 +24,7 @@ Status: **NOT PRODUCTION-READY**. Do not advertise this as complete one-click in
 python -m unittest discover -s quickstart/a4 -p "test_*.py" -t . -v
 \`\`\`
 
-2026-11-14: 21 tests enumerated; **20 passed, 1 skipped** — including two real guarded subprocess tests (Windows symlink privilege), rc=0, job \`2d9cce5a21bf40d09dc6f1bf83dc882e\`.
+2026-11-14: 23 A4 tests enumerated; **22 passed, 1 skipped**. Full Quickstart regression: **42 tests, 41 passed, 1 skipped**, rc=0 (job `51009d16393f472598492b78237f2226`) — including two real guarded subprocess tests (Windows symlink privilege), rc=0, job \`2d9cce5a21bf40d09dc6f1bf83dc882e\`.
 
 ## Remaining acceptance blockers (handoff to A5)
 
