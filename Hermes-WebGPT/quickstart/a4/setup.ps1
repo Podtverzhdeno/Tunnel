@@ -94,7 +94,10 @@ $save.Add_Click({
         if ([IO.Path]::GetFileName($browser.Text).ToLowerInvariant() -ne 'browser.exe') { throw 'Нужен browser.exe' }
         if ($mode.SelectedIndex -eq 1) {
             $confirm=[Windows.Forms.MessageBox]::Show('Полный доступ разрешает изменение файлов. Подтвердить?','Hermes','YesNo','Warning')
-            if ($confirm -ne 'Yes') { throw 'Доступ не подтверждён' }
+            if ($confirm -ne 'Yes') {
+                $status.Text='Полный доступ не подтверждён. Настройки не изменены.'
+                return
+            }
         }
         if (-not (Test-Path -LiteralPath $state)) { [void](New-Item -ItemType Directory -Path $state -Force) }
         $choice=if($mode.SelectedIndex -eq 0){'read_only'}else{'full_access'}
