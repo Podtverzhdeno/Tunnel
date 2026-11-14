@@ -30,6 +30,35 @@ class SecretBootstrapTests(unittest.TestCase):
             vars_ = services._gateway_env_available()
         self.assertEqual(vars_["TELEGRAM_BOT_TOKEN"], "profile-test-token")
 
+    def test_gateway_process_environment_strips_unrelated_privileged_keys(self):
+        ambient={
+            "TELEGRAM_BOT_TOKEN": "ambient-telegram",
+            "CONTROL_PLANE_API_KEY": "synthetic-cp-ambient",
+            "LOCAL_MCP_OBSERVER_BEARER": "synthetic-observer",
+            "HERMES_A4_OBSERVER_AUTHORIZATION": "Bearer synthetic",
+            "MCP_EXTRA_HEADERS": "Authorization: env:SYNTHETIC",
+            "MCP_DISCOVERY_EXTRA_HEADERS": "Authorization: env:SYNTHETIC",
+            "UNRELATED_ALLOWED": "retained",
+        }
+        profile={
+            "TELEGRAM_BOT_TOKEN": "configured-telegram",
+            "CONTROL_PLANE_API_KEY": "synthetic-cp-profile",
+            "MCP_EXTRA_HEADERS": "must-be-stripped",
+            "CUSTOM_GATEWAY_VALUE": "kept",
+        }
+        with patch.object(services, "ROOT", self.root):
+            child=services._gateway_child_environment(profile,ambient)
+        self.assertEqual(child["TELEGRAM_BOT_TOKEN"],"configured-telegram")
+        self.assertEqual(child["CUSTOM_GATEWAY_VALUE"],"kept")
+        self.assertEqual(child["UNRELATED_ALLOWED"],"retained")
+        for key in services._GATEWAY_ENV_DENY:
+            self.assertNotIn(key,child)
+        self.assertNotIn("synthetic-cp",str(child))
+
+    def test_gateway_process_environment_denies_missing_telegram(self):
+        with self.assertRaisesRegex(services.StartupBlocked,"telegram_bot_token_missing"):
+            services._gateway_child_environment({},{"CONTROL_PLANE_API_KEY":"synthetic"})
+
     def test_absent_key_denied(self):
         with patch.object(services, "ROOT", self.root), patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(services.StartupBlocked) as err:
@@ -77,6 +106,44 @@ class SecretBootstrapTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 2)
             self.assertIn(b"A4", proc.stdout)
+
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell required")
+    def test_explicit_dev_mode_bypasses_only_a4_gate(self):
+        import subprocess
+        with TemporaryDirectory() as td:
+            state = Path(td) / "Hermes-OneClick"
+            state.mkdir()
+            settings = state / "settings-a4.json"
+            original = '{"schema_version":1,"mode":"read_only"}'
+            settings.write_text(original, encoding="utf-8")
+            env = os.environ.copy()
+            env["LOCALAPPDATA"] = td
+            script = Path(__file__).resolve().parents[2] / "quickstart" / "start.ps1"
+            cmd = ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                   "-ExecutionPolicy", "Bypass", "-File", str(script),
+                   "-GateCheckOnly"]
+            refused = subprocess.run(cmd, env=env, capture_output=True, timeout=20)
+            self.assertEqual(refused.returncode, 2)
+            self.assertIn(b"A4", refused.stdout)
+            allowed = subprocess.run(cmd + ["-DevMode"], env=env,
+                                     capture_output=True, timeout=20)
+            self.assertEqual(allowed.returncode, 0,
+                             allowed.stderr.decode(errors="replace"))
+            self.assertIn(b"A4_GATE_OK", allowed.stdout)
+            self.assertIn(b"DEV MODE", allowed.stdout)
+            self.assertEqual(settings.read_text(encoding="utf-8"), original)
+            self.assertEqual(sorted(p.name for p in state.iterdir()),
+                             ["settings-a4.json"])
+
+    def test_dev_command_is_explicit_and_no_global_setting(self):
+        root = Path(__file__).resolve().parents[2]
+        dev = (root / "Start-Hermes-DEV.cmd").read_text(encoding="utf-8")
+        normal = (root / "Start-Hermes-All.cmd").read_text(encoding="utf-8")
+        self.assertIn("-DevMode", dev)
+        self.assertNotIn("-DevMode", normal)
+        self.assertIn("quickstart", dev)
+        self.assertNotIn("setx", dev.lower())
+        self.assertNotIn("reg add", dev.lower())
 
     def test_powershell_launcher_consumes_matching_dpapi_filename(self):
         script = (Path(__file__).resolve().parents[2] / "quickstart" / "start.ps1").read_text(encoding="utf-8-sig")
