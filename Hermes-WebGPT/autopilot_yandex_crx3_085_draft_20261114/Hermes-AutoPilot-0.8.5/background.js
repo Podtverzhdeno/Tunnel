@@ -7,6 +7,7 @@ import {previewTurnBinding} from './handoff_contract.mjs';
 import {insertChatDraft} from './draft_dom.mjs';
 import {ensureChatReady} from './browser_ready.mjs';
 import {createSessionController} from './session_control_v1.mjs';
+import {probeWebCompanionExtension} from './companion_external_probe.mjs';
 const RUN_KEY='hermesAutopilotRunV2';
 const OWNED_KEY='hermesAutopilotOwnedTabsV2';
 const DRAFT_KEY='hermesAutopilotDraftFencesV1';
@@ -20,7 +21,8 @@ const saveRun=async run=>{validateRunSnapshot(run);return chrome.storage.local.s
 const readOwned=async()=> (await chrome.storage.session.get(OWNED_KEY))[OWNED_KEY]??{};
 async function addOwned(runId,workerId,tabId){const owned=await readOwned();owned[String(tabId)]={runId,workerId};await chrome.storage.session.set({[OWNED_KEY]:owned});}
 async function removeOwned(tabId){const owned=await readOwned();delete owned[String(tabId)];await chrome.storage.session.set({[OWNED_KEY]:owned});}
-const sessions=createSessionController({chromeAPI:chrome,readRun,readOwned,safeClose});
+const sessions=createSessionController({chromeAPI:chrome,readRun,readOwned,safeClose,
+  probeCompanion:()=>probeWebCompanionExtension({runtime:chrome.runtime})});
 const isChatURL=value=>{try{return typeof value==='string'&&value.length>0&&new URL(value).origin==='https://chatgpt.com';}catch{return false;}};
 const isChatTab=tab=>{
  const active=tab?.url||'',pending=tab?.pendingUrl||'';
@@ -39,7 +41,14 @@ async function safeClose(runId,workerId,tabId){
  // chrome.tabs.get raced a new-tab navigation. No chat messages are retried.
  for(let attempt=0;attempt<6;attempt++){
   let tab;
-  try{tab=await chrome.tabs.get(tabId);}catch{await removeOwned(tabId);return false;}
+  try{tab=await chrome.tabs.get(tabId);}
+  catch(err){
+   // A transient browser API failure is NOT proof that the tab vanished.
+   // Preserve its ownership lease so recovery cannot adopt or duplicate it.
+   if(/No tab with id|Missing tab|tab not found/i.test(String(err?.message??err)))
+    await removeOwned(tabId);
+   return false;
+  }
   if(isChatTab(tab)){
    await chrome.tabs.remove(tabId);await removeOwned(tabId);return true;
   }

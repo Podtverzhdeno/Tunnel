@@ -55,6 +55,8 @@
 
 - [x] A1. Cover ChatGPT home-page editor without a visible mode toggle using a strict Chat-placeholder allowlist; unknown and Work placeholders blocked. Actual Yandex synthetic-browser test PASS (`35dcc93506cf40d7976991bf10d71bbc`). Live signed-in E2E remains OPEN.
 
+- [x] A1. Fix transient `chrome.tabs.get` errors in `safeClose`: preserve ownership on unknown outcome; add negative test covering blocked restart and no duplicate tab. Test `ba618c6affe14d54919d6839da629190` PASS (1/1).
+
 ### Additional engineering tasks
 - [ ] AutoPilot-Web Companion compatibility matrix keyed by extension ID,
   manifest version, source SHA and owner documentId; refuse unknown versions.

@@ -116,6 +116,10 @@ without Send and with the existing one-shot draft fence.
 
 Evidence: real Yandex binary, disposable profile, synthetic HTML at ChatGPT origin, `run_yandex_no_toggle.py`, job `35dcc93506cf40d7976991bf10d71bbc` PASS. Values: `chat_without_toggle_ready=true`, `work_without_toggle_blocked=true`, `unknown_without_toggle_blocked=true`, `no_send=true`, `tabs_open=1`. **Not a real ChatGPT model E2E.**
 
+### FR-AP-012 — transient tab lookup is not deletion proof
+
+WHEN `chrome.tabs.get(tabId)` fails with a transient transport/permission/timeout error during safe-close, AutoPilot SHALL **retain** the session-ownership record and keep the tab's state unresolved. Only an explicit `No tab with id` / `Missing tab` / `tab not found` outcome MAY remove its stored ownership; a subsequent START SHALL not create duplicates while that tab still resolves. Negative Node test `test_safeclose_transient.mjs`, job `ba618c6affe14d54919d6839da629190`, PASS (1/1), return code 0.
+
 ### Additional review hardening (2026-11-14)
 
 - **FR-AP-002 negative:** WHEN Work→Chat is requested, THEN the successful later READY result MUST carry `modeSwitchRequested=true` and increment the persisted per-tab attempt counter, preventing repeated mode clicks across monitoring cycles.
