@@ -32,6 +32,7 @@ class Selector:
             "password": int(self.page.challenge),
             "editor": 1,
             "button": 1,
+            "stop": int(self.page.streaming),
             "assistant": self.page.assistants,
             "user": self.page.users
         }[self.kind]
@@ -79,6 +80,8 @@ class Selector:
             "content": "MCP_LIVE_MOCK_OK",
             "tool_calls": []
         })
+        if self.page.fenced_reply:
+            self.page.answer = "```json\n" + self.page.answer + "\n```"
 
     async def inner_text(self, timeout=None):
         return self.page.user_visible_text if self.kind == "user" else self.page.answer
@@ -99,6 +102,8 @@ class Page:
         self.suppress_new_user = False
         self.foreign_user = False
         self.user_visible_text = ""
+        self.streaming = False
+        self.fenced_reply = False
 
     def is_closed(self):
         return self.closed
@@ -108,6 +113,9 @@ class Page:
             return Selector(self, "password")
         if "textarea" in selector:
             return Selector(self, "editor")
+        if ('stop-button' in selector or 'Stop generating' in selector
+                or 'Остановить' in selector):
+            return Selector(self, "stop")
         if "button[" in selector:
             return Selector(self, "button")
         if 'author-role="assistant"' in selector:
@@ -203,6 +211,27 @@ class LiveTransportTests(unittest.IsolatedAsyncioTestCase):
             self.http, CDP, CHAT, self.journal,
             browser_connector=lambda _: asyncio.sleep(0, result=Browser([page])),
             timeout_s=1
+        )
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(page.clicks, 1)
+        self.assertEqual(self.queue.read(self.rid)["state"], "uncertain")
+
+    async def test_fenced_json_reply_is_accepted_without_extra_chat_turn(self):
+        page = Page(CHAT, self.rid)
+        page.fenced_reply = True
+        result = await self.run_case([page])
+        self.assertEqual(result["outcome"], "done")
+        self.assertEqual(page.clicks, 1)
+        self.assertEqual(self.queue.read(self.rid)["state"], "done")
+
+    async def test_valid_json_while_generating_must_not_commit(self):
+        page = Page(CHAT, self.rid)
+        page.streaming = True
+        async def connector(_):
+            return Browser([page])
+        result = await execute_attached_once(
+            self.http, CDP, CHAT, self.journal,
+            browser_connector=connector, timeout_s=1
         )
         self.assertEqual(result["outcome"], "uncertain")
         self.assertEqual(page.clicks, 1)
@@ -334,6 +363,23 @@ class LiveTransportTests(unittest.IsolatedAsyncioTestCase):
 
 
 class LiveAdmissionTests(unittest.TestCase):
+    def test_json_fence_is_exact_and_request_bound(self):
+        from hermes_web_live_cdp import parse_request_bound_json
+        valid = json.dumps({
+            "request_id": "request-1", "content": "ok", "tool_calls": []
+        })
+        self.assertEqual(parse_request_bound_json(valid, "request-1"), valid)
+        self.assertEqual(
+            parse_request_bound_json("```json\n"+valid+"\n```", "request-1"),
+            valid)
+        self.assertIsNone(parse_request_bound_json(valid, "request-2"))
+        self.assertIsNone(parse_request_bound_json("explanation\n"+valid, "request-1"))
+        self.assertIsNone(parse_request_bound_json(
+            "```json\n"+valid+"\n```\nextra prose", "request-1"))
+        self.assertIsNone(parse_request_bound_json(
+            json.dumps({"request_id":"request-1","content":7,"tool_calls":[]}),
+            "request-1"))
+
     def test_browser_endpoint_is_loopback_and_chat_is_exact(self):
         validate_urls("http://127.0.0.1:18765", CDP, CHAT)
         for bad in ("http://localhost:9222", "http://192.168.1.3:9222",
