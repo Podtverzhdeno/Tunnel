@@ -1,38 +1,49 @@
-# Hermes A4 — installer and permission boundary (candidate, 2026-11-14)
+# Hermes A4 — Windows one-click + tool permissions (Draft)
 
-Status: **NOT PRODUCTION-READY**. Do not advertise this as complete one-click installation.
+Updated 2026-11-14. **Production: NOT READY.** The configuration wizard is a working code candidate, but does not yet launch a security-enforced live MCP environment. The existing 28-tool MCP/Telegram runtime on the user's PC must not be silently replaced.
 
-## Local Windows artifacts
+## Candidate source files
 
-- Root: \`Setup-Hermes-A4.cmd\` — double-click opens PowerShell 5.1 WinForms setup wizard.
-- \`quickstart/a4/setup.ps1\` — select read-only / scoped full mode, working folder, Yandex browser and 1–5 lanes; optionally store Telegram/Tunnel credentials encrypted using current-user Windows DPAPI; save nonsecret settings under \`%LOCALAPPDATA%\Hermes-OneClick\settings-a4.json\`.
-- \`quickstart/a4/policy.py\` — fail-closed authorization matrix and canonical path/symlink boundary checks.
-- \`quickstart/a4/mcp_guard.py\` — real MCP JSON-RPC stdio tool-call filter, including \`tools/list\` filtering and \`tools/call\` denial. Run only with a trusted backend and expose only this guarded endpoint to the client.
-- The *existing* preconfigured one-click service starter remains \`Start-Hermes-All.cmd\`; the A4 GUI intentionally **does not call it** until actual runtime enforcement is configured.
+- `Setup-Hermes-A4.cmd` — double-click opens PowerShell 5.1 / WinForms UI for Windows 10/11.
+- `quickstart/a4/setup.ps1` — mode (`read_only` / scoped `full_access`), folder, Yandex browser, 1–5 lanes, encrypted optional keys, saved settings, status diagnostic, previous-settings recovery.
+- `quickstart/a4/preflight.py` — no side effects: validates settings and loopback MCP/Tunnel/Relay health. Always reports real tool enforcement as **unverified** until transport is integrated and tested.
+- `quickstart/a4/policy.py` — deny-by-default allowlist for read-only and scoped file operations. Arbitrary commands, Git mutation and unsupported methods are denied.
+- `quickstart/a4/mcp_guard.py` — isolated MCP stdio guard; `tools/list` only advertises approved tools and `tools/call` checks mode/workspace/path.
+- `quickstart/a4/recovery.py` — allowlisted backup/restore of setup settings and encrypted DPAPI blobs. A previous version may be restored without destroying the current bytes, which are saved as `.rollback-current`. No automatic state migration.
+- `quickstart/start.ps1` + `quickstart/services.py` — existing preconfigured service launcher accepts encrypted GUI Telegram token via current-user DPAPI → process environment. Existing `profile/.env` token takes precedence. Original guarded start workflow remains otherwise unchanged.
 
-## Security rules
+## Safety and known limits
 
-1. **Read only**: no file writes, command execution, Git mutation or arbitrary tool names.
-2. **Scoped full access**: selected file write tools permitted *inside the chosen directory*. Arbitrary shell, scripts, tests and Git push remain blocked because they can escape the OS scope. A future OS-level sandbox is required for broader access.
-3. Invalid tools, workspaces, paths and symlink escapes fail closed. The full MCP host must not remain exposed via a second connector, port or alternate transport; configuration alone does not enforce this.
-4. Tokens are not written to repository config or logged. Existing legacy \`profile/.env\` and \`start.ps1\` are not modified by this candidate. Saving DPAPI tokens does **not** connect the legacy gateway.
-5. Microsoft/Chromium browser approval is never bypassed. A one-click GUI may open the extensions page, but the user must approve extension installation in the browser.
+1. Setup GUI deliberately **does not call** `Start-Hermes-All.cmd` until the live MCP permission boundary is installed, verified and the unguarded alternate route excluded. This is not yet a complete one-click installation.
+2. User-selected `full_access` only allows a small, scoped file write subset in the test guard, not arbitrary execution; deployment requires OS-enforced filesystem and process sandboxing. Client-side `settings-a4.json` is NOT an authorization grant.
+3. Stdio guard is not connected to installed HTTP MCP Tunnel. Native Local Workspace host also supports an `observer` profile: a read-only HTTP profile must be enabled and verified via real control-plane/owner-approved routing before claiming read-only safety.
+4. The GUI never prints keys. Entered keys are serialized via PowerShell `Export-Clixml` with Windows DPAPI under `%LOCALAPPDATA%\Hermes-OneClick`. The gateway launch reads only the encrypted Telegram token when no configured profile token exists; the tunnel uses the existing DPAPI filename.
+5. The installer never bypasses browser account sign-in or extension installation approvals. A successful port check or synthetic MCP test is NOT Telegram↔Web E2E.
+6. Symbolic-link path races and host/transport bypass remain release blockers; do not advertise strict OS sandboxing from the candidate policy alone.
+7. No live Relay, Tunnel, Gateway or browser profiles were modified or restarted during development.
 
-## Reproducible checks on Windows
+## Reproducible tests
 
-\`\`\`powershell
-python -m unittest discover -s quickstart/a4 -p "test_*.py" -t . -v
-\`\`\`
+```powershell
+python -m unittest discover -s quickstart -p "test_*.py" -t . -v
+python quickstart/inspect_dryrun_readonly.py
+```
 
-2026-11-14: 23 A4 tests enumerated; **22 passed, 1 skipped**. Full Quickstart regression: **42 tests, 41 passed, 1 skipped**, rc=0 (job `51009d16393f472598492b78237f2226`) — including two real guarded subprocess tests (Windows symlink privilege), rc=0, job \`2d9cce5a21bf40d09dc6f1bf83dc882e\`.
+Local Windows result 2026-11-14: 59 enumerated; **57 PASS, 2 SKIP** (Windows symlink privilege), exit code 0. Job `a925f08ac46d4c18a6bb1b6e4d707247`. Synthetic real stdio MCP E2E confirms a denied write never reaches the backend. A synthetic DPAPI encrypted-storage roundtrip passed without revealing a real key. Existing OneClick was checked in DryRun (no process restart).
 
-## Remaining acceptance blockers (handoff to A5)
+## A4 acceptance backlog (handoff to A5)
 
-- Wire the guarded MCP transport into the real Hermes connector and *remove all alternate unguarded routes*. Validate permissions through real \`tools/list\` and denied write calls, not only unit tests.
-- Integrate first-run dependency verification/installation with pinned official hashes, tool binary and process ownership, then upgrade the GUI from safe configuration to guarded start.
-- Integrate DPAPI secret retrieval into the real Telegram/Gateway startup, with secure permission checks and no plaintext secret logging.
-- Test clean Windows 10 and Windows 11 VMs and actual installed Yandex Browser extension loading.
-- Verify idempotent MCP + Tunnel + Relay + Gateway start, restart/recovery and successful Telegram ↔ ChatGPT E2E. No live process was restarted by this A4 candidate.
-- Independently review the scoped policy for path-race attacks (symlink TOCTOU) and incomplete MCP protocol passthrough (notifications, pagination, transport mismatch).
+| # | Requirement | Current status | Completion gate |
+|---|---|---|---|
+| 1 | Double-click installer | PARTIAL | Clean Windows clone + actual guarded launch |
+| 2 | MCP/Tunnel/Relay/Hermes start | PARTIAL | Verified first-time provisioning and launch |
+| 3 | GUI wizard | PARTIAL | Interactive UI smoke in Yandex/Windows |
+| 4 | Choice/change of permissions | PARTIAL | Host-enforced mode-switch with owner consent |
+| 5 | Technical permission boundary | PARTIAL | Actual HTTP/stdio connector isolation + negative E2E |
+| 6 | Paths/keys/browser/lanes | PARTIAL | Real settings→runtime wiring and 3-lane E2E |
+| 7 | Safe secrets | PARTIAL | Live process injection and secret-log inspection |
+| 8 | Readiness checks | PARTIAL | Full startup and Telegram delivery E2E |
+| 9 | Update & recovery | PARTIAL | Atomic release rollback under failure/stress |
+| 10 | Real PC installation | NOT DONE | Independent Windows 10/11 + Yandex production E2E |
 
-**No production release decision may be based on these unit tests alone.**
+Next executable step: agree on a single authoritative MCP profile/port for mode enforcement, implement that routed host boundary, then run real permission-denial tests without disturbing active 28-tool sessions. At no stage should an agent self-approve elevated OS permissions.
