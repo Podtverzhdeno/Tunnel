@@ -49,6 +49,18 @@ This is NOT a claim of live ChatGPT or Telegram end-to-end delivery.
   Hermes CLI exit=0, sidecar exit=0, expected synthetic answer
   received by CLI. **No real ChatGPT or Telegram traffic.**
 
+- Native installed Hermes Telegram SDK inbound handler with a synthetic
+  supergroup forum topic `thread_id=14` -> ephemeral Relay HTTP ->
+  MCP SDK stdio sidecar -> isolated Edge CDP -> Relay ->
+  Telegram SDK mock SendResult ACK in the **same chat and same topic**:
+  job `b7e2f47fb6e840ba94f7762d3e64f264`, rc0.
+  Single browser Send, one `done` Relay request, SDK inbound and mock
+  outgoing ACK both true, returned metadata `{"thread_id":"14"}`.
+  No real Telegram Bot API, account, chat or ChatGPT Web network request.
+- Retested installed Hermes CLI model client after adding Telegram mode:
+  job `e0fbd04ee6bc4d2ab2156fdb977f46cf`, rc0.
+  Both modes use the same real MCP sidecar and same browser executor.
+
 ## Live environment readiness
 Read-only `python -m hermes_mcp_cdp_preflight`:
 job `1a0263c925d14f14bf228f29caacc6ee`, rc0.
