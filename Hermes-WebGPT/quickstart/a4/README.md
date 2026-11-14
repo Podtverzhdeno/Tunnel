@@ -41,7 +41,7 @@ Local Windows result 2026-11-14: 78 enumerated; **76 PASS, 2 SKIP** (Windows sym
 |---|---|---|---|
 | 1 | Double-click installer | PARTIAL | Clean Windows clone + actual guarded launch |
 | 2 | MCP/Tunnel/Relay/Hermes start | PARTIAL | Verified first-time provisioning and launch |
-| 3 | GUI wizard | PARTIAL | Interactive UI smoke in Yandex/Windows |
+| 3 | GUI wizard | **DONE — Windows interactive GUI accepted** | Four WinForms UI scenarios PASS (save read-only/full+consent, 3→5 workers, restore, consent denial); see `GUI_WIZARD_ACCEPTANCE_20261114.md`. Live deployment remains under #1/#4/#5/#10 |
 | 4 | Choice/change of permissions | PARTIAL | Host-enforced mode-switch with owner consent |
 | 5 | Technical permission boundary | PARTIAL | Actual HTTP/stdio connector isolation + negative E2E |
 | 6 | Paths/keys/browser/lanes | PARTIAL | Real settings→runtime wiring and 3-lane E2E |
@@ -60,3 +60,11 @@ Next executable step: agree on a single authoritative MCP profile/port for mode 
 - Observer startup can archive an old PID receipt **only** when Windows confirms the PID is absent. Tests cover false/unknown PID states and archive conflicts.
 - Last full Windows Quickstart regression: **94 enumerated; 92 PASS, 2 SKIP**, rc=0, Local Workspace job `ab620be80b984926922314350519b7ea`. Two Windows symlink privilege tests remain skipped. No production services were interrupted.
 - The final live click-through in the actual Yandex Browser, owner-granted full access, clean clone dependency provisioning, release updater, independent A5 QA and Telegram↔ChatGPT↔Telegram delivery are still unverified. Keep PR **Draft**.
+
+## A4 continuation — 2026-11-14 14:13 UTC
+
+- Independent isolated **real Windows GUI click-path E2E** (`quickstart/a4/gui_winforms_acceptance.py`, kept in local QA workspace) passed all four cases: save read-only, confirm full-access selection, deny full access without persisting changes, and restore previous configuration, with two synthetic DPAPI secret files. Job `1a49deced8d84a4b9e348bf1ba292e24`, rc=0; production services and settings unchanged.
+- Fixed UX issue: declining full access now returns normally without a second warning dialog.
+- Added **offline versioned release staging**: `quickstart/a4/release_manager.py`, with manifest SHA256 pin, per-file SHA256, path allowlist, cross-process update lock, atomic version pointer, previous-version preservation and explicit rollback. This affects only A4 release assets under a per-user state folder. It does **not** install or replace the full Hermes runtime, does not auto-fetch updates, and does not restart services. A trusted checksum must be supplied by the publisher/owner through a separate trusted channel.
+- 10 focused release tests: **9 PASS / 1 SKIP** (Windows symlink privilege), job `a1093d15177a40cd8e993190e3c29ffb`. Full Windows Quickstart regression: **105 total / 101 PASS / 4 SKIP**, exit 0, job `3effb090fa884ced80124e2fdedf40b9`. Separate real GUI E2E PASSED.
+- Clean-clone distribution **still incomplete**: branch currently lacks `Hermes-WebGPT/gateway_runner.py` and `Hermes-WebGPT/start_bridge.py`; full one-click setup must fail closed rather than advertise readiness. No Cloud/Telegram E2E or full-access OS sandbox acceptance is claimed.
