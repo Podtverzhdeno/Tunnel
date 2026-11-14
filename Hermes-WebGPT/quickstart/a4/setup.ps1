@@ -19,7 +19,7 @@ if ($null -ne $screen -and $screen.WorkingArea.Height -gt 500) {
     $f.Height=[Math]::Max(500,[Math]::Min(825,$screen.WorkingArea.Height-55))
 }
 $f.AutoScroll=$true
-$f.AutoScrollMinSize=New-Object Drawing.Size(645,930)
+$f.AutoScrollMinSize=New-Object Drawing.Size(645,1000)
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
     $a=New-Object Windows.Forms.Label
@@ -380,9 +380,30 @@ $connectTunnel.Add_Click({
     }
 })
 $f.Controls.Add($connectTunnel)
+# Explicit development lane: bypasses ONLY the A4 installer gate.
+# No OS/MCP permissions, cloud authentication, or security settings changed.
+$devInfo=L 'DEV: текущий MCP сохраняет свои права; выбор прав в этом мастере на него не влияет.' 835 48
+$devInfo.ForeColor=[Drawing.Color]::DarkOrange
+$devLaunch=New-Object Windows.Forms.Button
+$devLaunch.Text='DEV: запустить Hermes без стоп-фактора A4'
+$devLaunch.Left=22;$devLaunch.Top=885;$devLaunch.Width=615;$devLaunch.Height=37
+$devLaunch.Add_Click({
+    try {
+        $devCmd=Join-Path $project 'Start-Hermes-DEV.cmd'
+        if (-not (Test-Path -LiteralPath $devCmd -PathType Leaf)) {
+            throw 'DEV-запускатель не найден.'
+        }
+        Start-Process -FilePath $devCmd -WorkingDirectory $project
+        $status.Text='DEV запуск открыт. Проверьте результат в окне Hermes.'
+    } catch {
+        $status.Text='DEV запуск не состоялся. Проверьте папку проекта.'
+    }
+})
+$f.Controls.Add($devLaunch)
 if ($SmokeTest) {
     if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
-        -not $save.Enabled -or -not $recover.Enabled) {
+        -not $save.Enabled -or -not $recover.Enabled -or
+        -not $devLaunch.Enabled) {
         throw 'a4_gui_control_construction_failed'
     }
     $f.Dispose()
