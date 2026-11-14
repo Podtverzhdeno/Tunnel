@@ -34,3 +34,10 @@
 - `verify_staged_relay_help.py` фактически импортировал исходники Relay из новой ZIP-версии и выполнил `relay.py --help` со штатным кодом 0, без запуска служб или сетевых обращений, архивные файлы не изменились. Job `5e128524466048b897001e38b437661d`, rc0.
 - `verify_staged_relay_live.py` **реально поднял отдельный Relay** из того же архива с новой временной SQLite-базой, временным токеном и случайным локальным портом. Сетевые запросы к `/health` и авторизованному `/bridge/status` прошли; `max_active_requests=3`, `active_requests=0`, `active_http_waiters=0`. Тестовый процесс корректно остановлен и временная папка удалена. Job `1f55846ccb44494d8847cf4eee416da6`, exit 0.
 - Это **не** 3 настоящих браузерных ответа, не Telegram E2E и не выпуск релиза. Рабочий порт 18765 не затронут; никаких POST в очередь не отправлялось.
+
+## Конкурентный HTTP E2E в изолированном Relay (синтетика)
+
+- `verify_staged_relay_three_synthetic.py` стартовал **тот же упакованный Relay** в отдельном временном процессе на случайном локальном порту с пустой SQLite-базой. Три параллельных HTTP-запроса `POST /v1/chat/completions` прошли через оригинальный протокол `/bridge/claim`, `/bridge/event`: `intent → saved → result` для каждого. Все три вернули ожидаемый **синтетический** ответ, и `active_requests` вернулся к 0.
+- Результат: `PASS`, `synthetic_http_roundtrips=3`, `three_concurrent_claims_verified=true`, `all_synthetic_responses_completed=true`, `actual_browser_workers_used=false`; job `7d3c1074511e423781dcf4724095e741`, exit 0.
+- После изолированного теста повторно проверен **реальный** `Start-Hermes-All.cmd` на ПК: `PASS`, `service_and_receipt_identity_unchanged=true`, `web_companion_bridge_authenticated=true`, `autopilot_send_unverified_warning=true`, без отправок и загрузок; job `de07000f412440cbb9c6bdfacda78321`, exit 0.
+- **Принципиальное ограничение:** браузерных работников и ответов ChatGPT в тесте не было, поэтому это доказывает backend-конкурентность, а не Telegram ↔ ChatGPT E2E. Действующие очереди и разрешения не менялись.
