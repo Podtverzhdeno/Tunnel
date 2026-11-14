@@ -64,7 +64,12 @@ class Selector:
 
     async def click(self, timeout=None, no_wait_after=None):
         self.page.clicks += 1
-        self.page.users += 1
+        if not self.page.suppress_new_user:
+            self.page.users += 1
+            self.page.user_visible_text = (
+                "unrelated manual message" if self.page.foreign_user
+                else self.page.composer
+            )
         if self.page.close_after:
             self.page.closed = True
             return
@@ -76,7 +81,7 @@ class Selector:
         })
 
     async def inner_text(self, timeout=None):
-        return self.page.answer
+        return self.page.user_visible_text if self.kind == "user" else self.page.answer
 
 
 class Page:
@@ -91,6 +96,9 @@ class Page:
         self.users = 0
         self.assistants = 0
         self.clicks = 0
+        self.suppress_new_user = False
+        self.foreign_user = False
+        self.user_visible_text = ""
 
     def is_closed(self):
         return self.closed
@@ -171,6 +179,35 @@ class LiveTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.journal.read(self.rid)["phase"], LIVE_VERIFIED)
         self.assertIn("MCP_LIVE_MOCK_OK", self.queue.read(self.rid)["result"])
 
+    async def test_old_user_turn_cannot_confirm_new_assistant_reply(self):
+        # The old implementation only tested user.count() > 0 and could
+        # accept a new assistant turn without a new request-bound user turn.
+        page = Page(CHAT, self.rid)
+        page.users = 2
+        page.suppress_new_user = True
+        result = await execute_attached_once(
+            self.http, CDP, CHAT, self.journal,
+            browser_connector=lambda _: asyncio.sleep(0, result=Browser([page])),
+            timeout_s=1
+        )
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(page.clicks, 1)
+        self.assertEqual(self.queue.read(self.rid)["state"], "uncertain")
+
+    async def test_different_user_message_cannot_confirm_matching_assistant(self):
+        # A manual/foreign Send has its own chat user bubble and must not
+        # satisfy this request even if the new assistant JSON copies its ID.
+        page = Page(CHAT, self.rid)
+        page.foreign_user = True
+        result = await execute_attached_once(
+            self.http, CDP, CHAT, self.journal,
+            browser_connector=lambda _: asyncio.sleep(0, result=Browser([page])),
+            timeout_s=1
+        )
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(page.clicks, 1)
+        self.assertEqual(self.queue.read(self.rid)["state"], "uncertain")
+
     async def test_pre_send_challenge_blocks_without_click(self):
         page = Page(CHAT, self.rid, challenge=True)
         result = await self.run_case([page])
@@ -249,9 +286,35 @@ class LiveTransportTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_case([page])
         self.assertEqual(result["outcome"], "uncertain")
         self.assertEqual(page.clicks, 0)
+        self.assertEqual(page.composer, "", "abandoned prompt must not remain in UI")
         self.assertEqual(self.queue.read(self.rid)["state"], "uncertain")
         with self.assertRaises(Exception):
             self.journal.reserve(self.rid)
+
+    async def test_journal_arm_failure_clears_owned_draft_without_click(self):
+        page = Page(CHAT, self.rid)
+        with patch.object(self.journal, "arm_before_click",
+                          side_effect=OSError("synthetic disk failure")):
+            result = await self.run_case([page])
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(page.clicks, 0)
+        self.assertEqual(page.composer, "")
+        self.assertEqual(self.queue.read(self.rid)["state"], "uncertain")
+
+    async def test_intent_failure_must_not_erase_concurrent_manual_edit(self):
+        page = Page(CHAT, self.rid)
+        original = self.http.post
+        def changed_draft(path, data):
+            status, receipt = original(path, data)
+            if path == "/bridge/event" and data["action"] == "intent":
+                page.composer = "MANUAL_OPERATOR_TEXT"
+                return 503, {"ok": False, "error": "synthetic_ack_loss"}
+            return status, receipt
+        self.http.post = changed_draft
+        result = await self.run_case([page])
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(page.clicks, 0)
+        self.assertEqual(page.composer, "MANUAL_OPERATOR_TEXT")
 
     async def test_result_ack_loss_does_not_retry_browser_send(self):
         original = self.http.post
