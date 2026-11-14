@@ -29,6 +29,31 @@ from hermes_cdp_relay_client import ScopedWorkerHttp, get_one_job, event, only_l
 CHAT_RE = re.compile(r"^https://chatgpt[.]com/c/[a-z0-9-]+$")
 MAX_RESPONSE_CHARS = 150_000
 
+# contenteditable markup can turn an exact two-newline separator into
+# <div><br></div><div>...</div>. Chromium innerText adds a newline and
+# textContent loses them. Reconstruct the value structurally so our request
+# identity check does NOT mistake DOM layout for a changed prompt.
+RICH_EDITOR_TEXT_JS = r"""(root) => {
+    const BLOCK = new Set(['DIV', 'P']);
+    function extract(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue;
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        if (node.tagName === 'BR') {
+            const parent = node.parentElement;
+            return parent && BLOCK.has(parent.tagName)
+                && parent.childNodes.length === 1 ? '' : '\n';
+        }
+        let out = '';
+        for (const [i, child] of [...node.childNodes].entries()) {
+            if (i && child.nodeType === Node.ELEMENT_NODE
+                    && BLOCK.has(child.tagName)) out += '\n';
+            out += extract(child);
+        }
+        return out;
+    }
+    return extract(root);
+}"""
+
 
 class LiveCDPFault(ValueError):
     pass
@@ -122,7 +147,7 @@ async def preflight_page(page, chat_url: str, prompt: str):
     contenteditable = (await editor.get_attribute("contenteditable")) == "true"
 
     async def text_in_editor():
-        return (await editor.inner_text()) if contenteditable else (
+        return (await editor.evaluate(RICH_EDITOR_TEXT_JS)) if contenteditable else (
             await editor.input_value())
 
     if not await editor.is_editable() or (await text_in_editor()).strip():
@@ -130,41 +155,61 @@ async def preflight_page(page, chat_url: str, prompt: str):
     if len(prompt) > 130_000:
         raise LiveCDPFault("prompt_too_large")
     # Modern ChatGPT disables/hides Send until the prompt is filled.
-    await editor.fill(prompt, timeout=5000)
-    if await text_in_editor() != prompt or not same_chat(page.url, chat_url):
-        raise LiveCDPFault("composer_fill_unconfirmed")
-    buttons = page.locator(
-        'button[data-testid="send-button"]:visible, '
-        'button#composer-submit-button:visible, '
-        'button[aria-label*="Send"]:visible, '
-        'button[aria-label*="Отправить"]:visible'
-    )
-    if await buttons.count() != 1:
-        raise LiveCDPFault("send_not_unique")
-    # The selected Send must belong to this exact editor's form.
-    same_form = await editor.evaluate(
-        """(edit) => { const form = edit.closest('form');
-          return !!form && [...form.querySelectorAll('button')].some(
-            b => b.matches('[data-testid="send-button"], #composer-submit-button,'
-              + ' [aria-label*="Send"], [aria-label*="Отправить"]')
-              && !!b.getClientRects().length); }""")
-    if not same_form:
-        raise LiveCDPFault("composer_send_form_mismatch")
-    if not await buttons.first.is_enabled() or not same_chat(page.url, chat_url):
-        raise LiveCDPFault("send_changed_before_intent")
-    return buttons.first
+    # This is still PRE-intent: if later validation fails, remove ONLY the
+    # exact text we just wrote. Do not erase manual edits or follow a
+    # navigation into a different chat. Never perform a Send here.
+    try:
+        await editor.fill(prompt, timeout=5000)
+        if await text_in_editor() != prompt or not same_chat(page.url, chat_url):
+            raise LiveCDPFault("composer_fill_unconfirmed")
+        buttons = page.locator(
+            'button[data-testid="send-button"]:visible, '
+            'button#composer-submit-button:visible, '
+            'button[aria-label*="Send"]:visible, '
+            'button[aria-label*="Отправить"]:visible'
+        )
+        if await buttons.count() != 1:
+            raise LiveCDPFault("send_not_unique")
+        # The selected Send must belong to this exact editor's form.
+        same_form = await editor.evaluate(
+            """(edit) => { const form = edit.closest('form');
+              return !!form && [...form.querySelectorAll('button')].some(
+                b => b.matches('[data-testid="send-button"], #composer-submit-button,'
+                  + ' [aria-label*="Send"], [aria-label*="Отправить"]')
+                  && !!b.getClientRects().length); }""")
+        if not same_form:
+            raise LiveCDPFault("composer_send_form_mismatch")
+        if not await buttons.first.is_enabled() or not same_chat(page.url, chat_url):
+            raise LiveCDPFault("send_changed_before_intent")
+        return buttons.first
+    except Exception:
+        try:
+            if same_chat(page.url, chat_url) and await text_in_editor() == prompt:
+                await editor.fill("", timeout=1500)
+        except Exception:
+            pass  # An uncertain DOM must never authorize any click or retry.
+        raise
 
 
 async def await_reply(page, chat_url: str, request_id: str, previous_assistants: int,
-                      timeout_s: int = 180) -> str:
+                      previous_users: int, timeout_s: int = 180) -> str:
     assistant = page.locator('[data-message-author-role="assistant"]')
     user = page.locator('[data-message-author-role="user"]')
     started = asyncio.get_running_loop().time()
     while asyncio.get_running_loop().time() - started < timeout_s:
         if page.is_closed() or not same_chat(page.url, chat_url):
             raise LiveCDPFault("page_closed_or_conversation_changed")
-        # A send needs a fresh user bubble followed by a new assistant turn.
-        if await user.count() > 0 and await assistant.count() > previous_assistants:
+        # A send needs precisely one *new* request-bound user turn before
+        # accepting a new assistant bubble. Historic user turns or a manual
+        # message from another actor cannot prove this Send succeeded.
+        user_count = await user.count()
+        if user_count > previous_users + 1:
+            raise LiveCDPFault("concurrent_user_turns_unverified")
+        if user_count == previous_users + 1:
+            visible_user = (await user.last.inner_text(timeout=3000)).strip()
+            if request_id not in visible_user:
+                raise LiveCDPFault("new_user_turn_request_mismatch")
+        if user_count == previous_users + 1 and await assistant.count() > previous_assistants:
             raw = (await assistant.last.inner_text(timeout=3000)).strip()
             if len(raw) > MAX_RESPONSE_CHARS:
                 raise LiveCDPFault("response_too_large")
@@ -216,7 +261,11 @@ async def _execute_claimed_once(http, cdp_url: str, chat_url: str, journal: Send
         browser = await browser_connector(cdp_url)
         return await _process_page(http, browser, chat_url, rid, lease,
                                    prompt, page_key, journal, timeout_s)
-    except BaseException:
+    except BaseException as exc:
+        # Only stable, non-sensitive local failure codes may leave the worker.
+        failure_code = (str(exc) if isinstance(exc, LiveCDPFault)
+                        and re.fullmatch(r"[a-z_]{1,70}", str(exc))
+                        else "worker_execution_failed")
         # Includes pre-page-selection failures. Persist noReplay after arm.
         try:
             phase = journal.read(rid)["phase"]
@@ -247,20 +296,58 @@ async def _execute_claimed_once(http, cdp_url: str, chat_url: str, journal: Send
                 pass
         outcome = ("blocked" if relay_state == "blocked" else "uncertain")
         return {"ok": False, "outcome": outcome, "relay_state": relay_state or "unverified",
-                "live_chatgpt_verified": False, "extension_used": False}
+                "failure_code": failure_code, "live_chatgpt_verified": False,
+                "extension_used": False}
+
+
+async def clear_owned_unsent_draft(page, chat_url: str, prompt: str) -> bool:
+    """Best-effort UI cleanup, NEVER a reason to replay an uncertain Send.
+
+    Clear only a unique composer in the unchanged conversation whose entire
+    current content still equals Hermes' exact prepared prompt. Manual edits
+    and navigation must remain untouched.
+    """
+    try:
+        if page.is_closed() or not same_chat(page.url, chat_url):
+            return False
+        editors = page.locator(
+            '#prompt-textarea[contenteditable="true"]:visible, '
+            '[data-testid="prompt-textarea"][contenteditable="true"]:visible, '
+            'textarea:visible'
+        )
+        if await editors.count() != 1:
+            return False
+        editor = editors.first
+        contenteditable = (await editor.get_attribute("contenteditable")) == "true"
+        current = (await editor.evaluate(RICH_EDITOR_TEXT_JS)) if contenteditable else (
+            await editor.input_value())
+        if current != prompt or not same_chat(page.url, chat_url):
+            return False
+        await editor.fill("", timeout=1500)
+        return True
+    except Exception:
+        return False
 
 
 async def _process_page(http, browser, chat_url, rid, lease, prompt, page_key,
                         journal, timeout_s):
     page = await select_page(browser, chat_url)
     before = await page.locator('[data-message-author-role="assistant"]').count()
+    before_users = await page.locator('[data-message-author-role="user"]').count()
     button = await preflight_page(page, chat_url, prompt)
-    status, ack = await event(http, rid, lease, "intent", page_key=page_key)
-    if status != 200 or ack.get("state") != "intent":
-        raise LiveCDPFault("relay_intent_not_confirmed")
-    journal.arm_before_click(rid)  # durable before browser action
+    try:
+        status, ack = await event(http, rid, lease, "intent", page_key=page_key)
+        if status != 200 or ack.get("state") != "intent":
+            raise LiveCDPFault("relay_intent_not_confirmed")
+        journal.arm_before_click(rid)  # durable before browser action
+    except BaseException:
+        # Still pre-click. The Relay acknowledgement or local journal may
+        # be uncertain, so NEVER replay, but leave no stale Hermes prompt.
+        # Any concurrent operator edit must remain untouched.
+        await clear_owned_unsent_draft(page, chat_url, prompt)
+        raise
     await button.click(timeout=5000, no_wait_after=True)  # exactly ONE UI effect
-    raw = await await_reply(page, chat_url, rid, before, timeout_s=timeout_s)
+    raw = await await_reply(page, chat_url, rid, before, before_users, timeout_s=timeout_s)
     # Relay owns final parsing/validating of request/tool identities.
     status, ack = await event(http, rid, lease, "saved", page_key=page_key, url=chat_url)
     if status != 200 or ack.get("state") != "saved":
