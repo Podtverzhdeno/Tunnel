@@ -56,7 +56,16 @@ Guardrails: never run live installer, change MCP/Tunnel/cloud routes, overwrite 
 - Hard blockers: user-granted dedicated Tunnel ID and connector app authorization; OS-enforced scoped full access; clean-install provisioning and restart E2E on Win10/11/Yandex; verified Telegram↔ChatGPT output; safe application update/rollback and A5 signoff.
 - Report 1–10 statuses as in the matrix above. Earlier test counts in this checkpoint are historical only.
 
-## A4 refreshed checkpoint — 2026-11-14 14:13 UTC (latest)
+## A4 packaging continuation — 2026-11-14 (latest)
+
+- New A4-owned files: `runtime_bundle.py`, `test_runtime_bundle.py`, `runtime_stage.py`, `test_runtime_stage.py`, `A5_HANDOFF_20261114_RUNTIME.md`. They are **local-only source packager + staged runtime verifier**, not a complete installer or remote deployment.
+- Source ZIP candidate built *locally* at `projects/.hermes-a4-runtime-v0.0.0-candidate.zip`. Verified SHA256 `1d5455e424c2fda423e58edfc3d2e12aa8a13ee823fe9512465266599a841796`, manifest `02a690fc1e49e9de4b4afe25238e96e9b20f327ef2419e3d311babdd703a6fba`. It **must not be published** without independent source/privacy/license audit.
+- Tests: `test_runtime_bundle.py` 10 PASS/1 SKIP; `test_runtime_stage.py` 9 PASS/1 SKIP. Full Windows Quickstart **150 total, 143 PASS, 7 SKIP, 0 FAIL**, rc0, job `4e80ec665aeb44f2b4bd92fce7e4a7eb`.
+- Source closure contract `dependency_closure.py` still 24 Python modules for Relay/Gateway. Gateway/bridge modules are missing in the GitHub clean clone. No build was deployed to running services.
+- Next admissible steps: A5 independent source/privacy verification; publish only approved module content; integrate release-candidate staging into one-click provisioning, include proven MCP/Tunnel/Relay/Browser dependencies, verify real read-only/full-scoped broker and Telegram E2E on clean Win10/11.
+- A4 ten-point statuses: #3 GUI scope independently E2E tested; #1,#2,#4,#5,#6,#7,#8,#9 remain partially complete; #10 not complete. Full OS-enforced write/execute broker and owner-authorized cloud tunnel still block production signoff. **Do not merge PR #6.**
+
+## A4 refreshed checkpoint — 2026-11-14 14:13 UTC (historical)
 
 - PR #6 remains Draft; publish own A4-only changes (GUI refusal UX, offline updater) with SHA/CAS, do not include A5-owned GUI QA script without its owner.
 - Tested: `gui_winforms_acceptance.py` rc=0 (job `1a49deced8d84a4b9e348bf1ba292e24`), all 4 real WinForms click paths passed in isolated temp AppData; user's real settings/keys untouched.
