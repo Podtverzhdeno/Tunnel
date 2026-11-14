@@ -45,6 +45,8 @@ def main() -> int:
             "launcher_exit_code":done.returncode,
             "service_and_receipt_identity_unchanged":unchanged,
             "web_companion_bridge_authenticated":bridge_ready,
+            "relay_loaded_build_match": "RELAY_BUILD_MATCH" in stdout,
+            "relay_loaded_build_stale_warning": "RELAY_BUILD_STALE" in stdout,
             "autopilot_send_unverified_warning":(
                 "AUTOPILOT_SEND_UNVERIFIED" in stdout
             ),
