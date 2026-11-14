@@ -70,6 +70,8 @@ class PreflightTests(unittest.TestCase):
         self.assertFalse(report["ready_for_live_start"])
         self.assertFalse(report["source_assets"]["relay_source"])
         self.assertFalse(report["source_assets"]["local_mcp_source"])
+        self.assertFalse(report["source_assets"]["python_dependency_closure"])
+        self.assertIn("gateway_bootstrap.py", report["missing_runtime_modules"])
         self.assertIn("required_source_components_missing", report["blockers"])
 
     def test_unhealthy_services_are_explicit(self):
