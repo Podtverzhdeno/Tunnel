@@ -65,7 +65,16 @@ send.addEventListener("click", ev=>{
     const reply=document.createElement("div");
     reply.setAttribute("data-message-author-role","assistant");
     const payload=JSON.stringify({request_id:id,content:"LIVE_DOM_FIXTURE_OK",tool_calls:[]});
-    reply.innerText=CASE==="fenced_json" ? '\`\`\`json\n'+payload+'\n\`\`\`' : payload;
+    if (CASE==="rendered_code") {
+        const label=document.createElement("div");label.innerText="json";
+        const pre=document.createElement("pre");
+        const code=document.createElement("code");code.innerText=payload;
+        pre.appendChild(code);
+        const copy=document.createElement("button");copy.innerText="Copy code";
+        reply.append(label,pre,copy);
+    } else {
+        reply.innerText=CASE==="fenced_json" ? '\`\`\`json\n'+payload+'\n\`\`\`' : payload;
+    }
     messages.appendChild(reply);
     window.postedAssistant++;
     if (CASE==="streaming_json") {
@@ -182,7 +191,8 @@ def isolated_case(mode, expected):
 
 def main():
     cases=(("ready","done"),("fenced_json","done"),
-           ("streaming_json","done"),("challenge","blocked"),
+           ("rendered_code","done"),("streaming_json","done"),
+           ("challenge","blocked"),
            ("no_user","uncertain"),("foreign_user","uncertain"))
     results=[isolated_case(*c) for c in cases]
     print(json.dumps({"ok":True,"cases":results,"browser":"real_Edge",
