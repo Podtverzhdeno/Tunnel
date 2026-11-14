@@ -18,7 +18,8 @@
 - `quickstart/a4/dev_status.py` и мастер `setup.ps1` показывают `relay_loaded_build_status`. При старом runtime появляется предупреждение, но Hermes DEV не блокируется.
 - `quickstart/start.ps1` дополнен read-only `DEV RELAY_BUILD_MATCH` / `DEV RELAY_BUILD_STALE` / `DEV RELAY_BUILD_UNKNOWN`, никаких автоматических перезапусков.
 - Unit tests parity: 7 total / 6 PASS / 1 SKIP (symlink privilege), job `8a421b44b8134b50beaa029c6fb3d3e4`; guarded reload decision tests: 4/4 PASS, job `655a0b901a8c4843b2083fb67d25b186`.
-- Полная Windows Quickstart перед добавлением guarded-decision tests и предупреждения в launcher: **241 total, 230 PASS / 11 SKIP / 0 FAIL**, job `4d97ad57f3f342a599c8e990e3fe4f38`. После завершающего редактирования запустить отдельную финальную регрессию.
+- Финальная Windows Quickstart после добавления guarded-decision tests и предупреждения в launcher: **245 total, 234 PASS / 11 SKIP / 0 FAIL**, job `351414809dbc4dd286658ea0ab60252e`, rc0.
+- После исправления обработки ошибок безопасный read-only запуск `guarded_relay_reload.py` вернул `NOT_REQUIRED`, rc0; восстановленный Relay не перезапускался. Job `61d469f2e2bf46b896585f3ba93e1d2a`; 4/4 unit tests PASS job `cbe1adb3040b4d15a62e55d0a8824c8e`.
 
 ## Что осталось
 
