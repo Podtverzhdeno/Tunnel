@@ -19,7 +19,7 @@ if ($null -ne $screen -and $screen.WorkingArea.Height -gt 500) {
     $f.Height=[Math]::Max(500,[Math]::Min(825,$screen.WorkingArea.Height-55))
 }
 $f.AutoScroll=$true
-$f.AutoScrollMinSize=New-Object Drawing.Size(645,760)
+$f.AutoScrollMinSize=New-Object Drawing.Size(645,930)
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
     $a=New-Object Windows.Forms.Label
@@ -323,6 +323,60 @@ $installCore.Add_Click({
     }
 })
 $f.Controls.Add($installCore)
+$null=L 'Tunnel ID нового подключения (отдельный от действующего)' 723
+$tunnelId=T 752
+$connectTunnel=New-Object Windows.Forms.Button
+$connectTunnel.Text='Подключить защищённый MCP к отдельному Tunnel'
+$connectTunnel.Left=22;$connectTunnel.Top=787;$connectTunnel.Width=616;$connectTunnel.Height=34
+$connectTunnel.Add_Click({
+    try {
+        if ($mode.SelectedIndex -ne 0) {
+            throw 'Полный доступ требует доверенного брокера.'
+        }
+        $keyFile=Join-Path $state 'control-plane-key.dpapi.xml'
+        $bearerFile=Join-Path $state 'observer-token.dpapi.xml'
+        if (-not (Test-Path -LiteralPath $keyFile -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $bearerFile -PathType Leaf)) {
+            throw 'Сохраните ключ API и запустите защищённый MCP.'
+        }
+        if ($tunnelId.Text -notmatch '^tunnel_[A-Za-z0-9_-]{8,128}$') {
+            throw 'Укажите отдельный действительный Tunnel ID.'
+        }
+        $confirmation=[Windows.Forms.MessageBox]::Show(
+            'Подтвердить создание отдельного подключения hermes-a4-observer? Действующий local-workspace останется без изменений. Требуется отдельный Tunnel ID.',
+            'Hermes — подключение MCP','YesNo','Warning')
+        if ($confirmation -ne 'Yes') { return }
+        $key=Import-Clixml -LiteralPath $keyFile
+        $bearer=Import-Clixml -LiteralPath $bearerFile
+        if ($key -isnot [System.Security.SecureString] -or
+            $bearer -isnot [System.Security.SecureString]) {
+            throw 'Файлы с секретами повреждены.'
+        }
+        $python=Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $python) { throw 'Не найден Python.' }
+        $env:CONTROL_PLANE_API_KEY=[System.Net.NetworkCredential]::new('', $key).Password
+        $env:LOCAL_MCP_OBSERVER_BEARER=[System.Net.NetworkCredential]::new('', $bearer).Password
+        try {
+            $lines=& $python.Source -m quickstart.a4.observer_tunnel connect --state $state --tunnel-id $tunnelId.Text --approved
+            if ($LASTEXITCODE -ne 0) { throw 'connection_unverified' }
+            $report=($lines | Select-Object -Last 1) | ConvertFrom-Json
+            if ($report.ok -ne $true -or
+                $report.local_runtime_ready -ne $true) {
+                throw 'connection_unverified'
+            }
+            $status.Text='Локальный Tunnel готов. Доступ через ChatGPT ещё не проверен.'
+        } finally {
+            Remove-Item Env:CONTROL_PLANE_API_KEY -ErrorAction SilentlyContinue
+            Remove-Item Env:LOCAL_MCP_OBSERVER_BEARER -ErrorAction SilentlyContinue
+        }
+    } catch {
+        $status.Text='Подключение не подтверждено. Не повторяйте без сверки статуса.'
+        [void][Windows.Forms.MessageBox]::Show(
+            'Проверьте подключение hermes-a4-observer в панели Tunnel. Повторная отправка заблокирована до сверки состояния.',
+            'Hermes','OK','Warning')
+    }
+})
+$f.Controls.Add($connectTunnel)
 if ($SmokeTest) {
     if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
         -not $save.Enabled -or -not $recover.Enabled) {
