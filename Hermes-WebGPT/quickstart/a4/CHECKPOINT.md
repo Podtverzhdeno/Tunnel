@@ -19,7 +19,7 @@
 ## A4 requirements: strict acceptance
 1. PARTIAL: one-click GUI/launcher exists; clean clone boot not accepted. When: verified initial dependency provisioning + Windows install.
 2. PARTIAL: existing MCP/Tunnel/Relay/Gateway launcher can restart preconfigured services; new isolated observer host can start. When: all four auto-provisioned under enforced rights.
-3. PARTIAL: WinForms wizard exists, real headless construction PASS; owner-assisted live click-path pending. When: interactive smoke.
+3. DONE (GUI scope): actual Windows WinForms interaction accepted in four isolated scenarios: read-only save, approved full-access save with 3→5 workers, restore, denied full-access no-persist. DPAPI synthetic secrets verified. Evidence `GUI_WIZARD_ACCEPTANCE_20261114.md`; independent opt-in real UI tests rc0 twice. This does NOT authorize production MCP permissions or close #4/#5/#10.
 4. PARTIAL: read-only/full-scoped selection saved; full trusted host broker not wired. When: owner-granted mode change independently verified.
 5. PARTIAL: native read-only host + scoped stdio filter tested; full OS sandbox and actual cloud-route isolation pending. When: direct live denied-write + bypass audit.
 6. PARTIAL: paths/browser/workers/optional keys fields exist, core boot only; worker count not bound to actual orchestration. When: live worker orchestration verified.
@@ -55,3 +55,12 @@ Guardrails: never run live installer, change MCP/Tunnel/cloud routes, overwrite 
 - **Next:** selectively publish A4-only local changes to Draft PR #6 after SHA-based review. Do not publish/test helper files from other agents. Do not merge until independent A5.
 - Hard blockers: user-granted dedicated Tunnel ID and connector app authorization; OS-enforced scoped full access; clean-install provisioning and restart E2E on Win10/11/Yandex; verified Telegram↔ChatGPT output; safe application update/rollback and A5 signoff.
 - Report 1–10 statuses as in the matrix above. Earlier test counts in this checkpoint are historical only.
+
+## A4 refreshed checkpoint — 2026-11-14 14:13 UTC (latest)
+
+- PR #6 remains Draft; publish own A4-only changes (GUI refusal UX, offline updater) with SHA/CAS, do not include A5-owned GUI QA script without its owner.
+- Tested: `gui_winforms_acceptance.py` rc=0 (job `1a49deced8d84a4b9e348bf1ba292e24`), all 4 real WinForms click paths passed in isolated temp AppData; user's real settings/keys untouched.
+- Tested: full Quickstart **105 enumerated, 101 passed, 4 skipped**, rc=0 job `3effb090fa884ced80124e2fdedf40b9`. A4-only release manager tests 9 PASS/1 SKIP. Any earlier count above is historical.
+- New local files: `quickstart/a4/release_manager.py`, `test_release_manager.py`. Offline A4 release version staging and rollback only; not a complete in-place updater.
+- A4 1–10: 1 PARTIAL (clean clone missing components), 2 PARTIAL (no secured unified startup), 3 PARTIAL (GUI real click E2E passed, owner production acceptance pending), 4 PARTIAL (choice works, full broker unconnected), 5 PARTIAL (observer 6-tool read-only verified, full sandbox/remote isolation missing), 6 PARTIAL (GUI config not wired to orchestration workers), 7 PARTIAL (DPAPI synthetic tests pass, live secrets/log review missing), 8 PARTIAL (health checks, no Telegram E2E), 9 PARTIAL (versioned offline A4 update and rollback, not whole runtime), 10 NOT DONE (clean Win10/11 Yandex Telegram E2E + A5).
+- NEXT: implement a safe, complete source/dependency distribution and user-approved dedicated observer Tunnel routing; **do not** change production tunnel 8765, push owner-specific keys to Git, silently grant full access, or merge before independent A5.
