@@ -13,6 +13,13 @@ if (-not $browserDefault) { $browserDefault = '' }
 $f = New-Object Windows.Forms.Form
 $f.Text='Hermes — установка и разрешения';$f.Width=680;$f.Height=825
 $f.StartPosition='CenterScreen';$f.MaximizeBox=$false;$f.FormBorderStyle='FixedDialog'
+# Keep actions reachable on compact 768px Windows screens.
+$screen=[Windows.Forms.Screen]::PrimaryScreen
+if ($null -ne $screen -and $screen.WorkingArea.Height -gt 500) {
+    $f.Height=[Math]::Max(500,[Math]::Min(825,$screen.WorkingArea.Height-55))
+}
+$f.AutoScroll=$true
+$f.AutoScrollMinSize=New-Object Drawing.Size(645,760)
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
     $a=New-Object Windows.Forms.Label
@@ -133,7 +140,12 @@ $check.Add_Click({
         $m = if ($report.services.mcp) { 'OK' } else { 'НЕТ' }
         $t = if ($report.services.tunnel) { 'OK' } else { 'НЕТ' }
         $r = if ($report.services.relay) { 'OK' } else { 'НЕТ' }
-        $status.Text="MCP: $m | Tunnel: $t | Relay: $r. Защита прав: ожидает интеграции."
+        $missing=@($report.source_assets.PSObject.Properties | Where-Object { $_.Value -ne $true } | ForEach-Object { $_.Name })
+        if ($missing.Count -gt 0) {
+            $status.Text="MCP:$m Tunnel:$t Relay:$r. Нет компонентов: " + ($missing -join ', ')
+        } else {
+            $status.Text="MCP:$m Tunnel:$t Relay:$r. Защита прав ещё не принята."
+        }
     } catch {
         $status.Text='Диагностика не прошла. Проверьте пути и установленные компоненты.'
     }
