@@ -26,7 +26,11 @@ class GuiBundleBuildTests(unittest.TestCase):
         self.assertEqual(digest,item["manifest_sha256"])
         state=self.temp/"state";state.mkdir()
         manager=ReleaseManager(state)
-        self.assertEqual(manager.preview(self.output,digest)["files_verified"],2)
+        self.assertEqual(manager.preview(self.output,digest)["files_verified"],len(SOURCE_FILES))
+        # The CMD in this bundle must never point at a missing PowerShell entry.
+        self.assertIn("quickstart\\a4\\release_launch.ps1",
+                      (self.output/"Setup-Hermes-A4.cmd").read_text(encoding="utf8"))
+        self.assertTrue((self.output/"quickstart/a4/release_launch.ps1").is_file())
         self.assertIsNone(manager.active())
         self.assertFalse(manager.releases.exists())
 
