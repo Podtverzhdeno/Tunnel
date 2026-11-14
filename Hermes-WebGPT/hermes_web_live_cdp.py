@@ -219,6 +219,39 @@ def parse_request_bound_json(raw: str, request_id: str) -> str | None:
     return body
 
 
+async def read_rendered_assistant_json(message, request_id: str) -> str | None:
+    """Read JSON from a plain message or a single rendered Markdown codeblock.
+
+    A ChatGPT rendered `pre/code` widget can add a language label and Copy
+    button text, so whole-message innerText is not parseable JSON. Refuse
+    arbitrary explanatory prose or multiple code blocks around a response.
+    """
+    raw = (await message.inner_text(timeout=3000)).strip()
+    if len(raw) > MAX_RESPONSE_CHARS:
+        raise LiveCDPFault("response_too_large")
+    direct = parse_request_bound_json(raw, request_id)
+    if direct is not None:
+        return direct
+    code = message.locator("pre code")
+    if await code.count() != 1:
+        return None
+    code_text = (await code.first.inner_text(timeout=3000)).strip()
+    candidate = parse_request_bound_json(code_text, request_id)
+    if candidate is None or code_text not in raw:
+        return None
+    before, after = raw.split(code_text, 1)
+    chrome = [line.strip().lower()
+              for line in (before + "\n" + after).splitlines()
+              if line.strip()]
+    allowed = {
+        "json", "copy", "copy code", "copied",
+        "копировать", "копировать код", "скопировано",
+    }
+    if len(chrome) > 2 or any(part not in allowed for part in chrome):
+        return None
+    return candidate
+
+
 async def await_reply(page, chat_url: str, request_id: str, previous_assistants: int,
                       previous_users: int, timeout_s: int = 180) -> str:
     assistant = page.locator('[data-message-author-role="assistant"]')
@@ -250,10 +283,8 @@ async def await_reply(page, chat_url: str, request_id: str, previous_assistants:
         if assistant_count > previous_assistants + 1:
             raise LiveCDPFault("concurrent_assistant_turns_unverified")
         if user_count == previous_users + 1 and assistant_count == previous_assistants + 1:
-            raw = (await assistant.last.inner_text(timeout=3000)).strip()
-            if len(raw) > MAX_RESPONSE_CHARS:
-                raise LiveCDPFault("response_too_large")
-            candidate = parse_request_bound_json(raw, request_id)
+            candidate = await read_rendered_assistant_json(
+                assistant.last, request_id)
             # A complete-looking JSON substring is not a completed inference.
             # Wait until the explicit generating control disappears and the
             # exact envelope remains unchanged for >1.5s.
