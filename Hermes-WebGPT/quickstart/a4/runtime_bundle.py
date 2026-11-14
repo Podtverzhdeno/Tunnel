@@ -157,8 +157,18 @@ def verify_candidate(zip_path: Path, expected_manifest_sha256: str) -> dict:
             raise BundleError("candidate_zip_inventory_mismatch")
         if len(names) != len(set(n.casefold() for n in names)):
             raise BundleError("candidate_duplicate_path")
-        if any(item.is_dir() or item.file_size > MAX_FILE_BYTES
-               or item.flag_bits & 0x1 for item in entries):
+        # A filename/hash allowlist is not enough: ZIP entries can carry Unix
+        # symlink, FIFO or device metadata while retaining identical bytes.
+        # Only regular files (or archives with no Unix type bits) are accepted.
+        if any(
+            item.is_dir()
+            or item.file_size > MAX_FILE_BYTES
+            or item.flag_bits & 0x1
+            or item.external_attr & 0x10  # DOS directory attribute
+            or stat.S_IFMT((item.external_attr >> 16) & 0xFFFF)
+            not in (0, stat.S_IFREG)
+            for item in entries
+        ):
             raise BundleError("candidate_unsafe_zip_entry")
         if sum(item.file_size for item in entries) > MAX_TOTAL_BYTES:
             raise BundleError("candidate_zip_total_exceeded")
