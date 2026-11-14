@@ -44,3 +44,14 @@ python quickstart\inspect_dryrun_readonly.py
 \`\`\`
 
 Guardrails: never run live installer, change MCP/Tunnel/cloud routes, overwrite user browser profiles, or export plaintext credentials without explicit owner action. Reports must enumerate statuses for items 1–10 and specify the next completion gate, not invent calendar ETAs.
+
+## Updated A4 checkpoint — 2026-11-14 14:00 UTC (current)
+
+- New local files: `quickstart/a4/observer_tunnel.py`, `test_observer_tunnel.py`, `inspect_connect_contract.py`. The latter is a CLI help inspection utility, no credentials.
+- New tests require managed local Tunnel status: exact booleans for `process_running`, `healthy`, and `ready` before marking local success. Remote ChatGPT connection is explicitly not verified.
+- Dedicated tunnel bearer now travels via `MCP_EXTRA_HEADERS=Authorization: env:HERMES_A4_OBSERVER_AUTHORIZATION` in the child process environment; no new plaintext authorization file is created. Official openai/tunnel-client documents this syntax and passes parent environment through to managed child.
+- Native observer reboot recovery archives dead PID receipts, never touches live or unknown process PIDs. Tested separately.
+- Windows full Quickstart tests: **94 total, 92 PASS / 2 SKIP**, exit code 0; job `ab620be80b984926922314350519b7ea`.
+- **Next:** selectively publish A4-only local changes to Draft PR #6 after SHA-based review. Do not publish/test helper files from other agents. Do not merge until independent A5.
+- Hard blockers: user-granted dedicated Tunnel ID and connector app authorization; OS-enforced scoped full access; clean-install provisioning and restart E2E on Win10/11/Yandex; verified Telegram↔ChatGPT output; safe application update/rollback and A5 signoff.
+- Report 1–10 statuses as in the matrix above. Earlier test counts in this checkpoint are historical only.
