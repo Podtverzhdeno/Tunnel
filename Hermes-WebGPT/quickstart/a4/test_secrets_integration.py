@@ -58,6 +58,26 @@ class SecretBootstrapTests(unittest.TestCase):
             self.assertEqual(result.stdout.strip(), "OK")
             self.assertNotIn(b"synthetic-test-token", path.read_bytes())
 
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell required")
+    def test_legacy_launcher_fails_closed_after_a4_choice(self):
+        import subprocess
+        with TemporaryDirectory() as td:
+            state = Path(td) / "Hermes-OneClick"
+            state.mkdir()
+            (state / "settings-a4.json").write_text(
+                '{"schema_version":1,"mode":"read_only"}', encoding="utf-8")
+            env = os.environ.copy()
+            env["LOCALAPPDATA"] = td
+            env.pop("TELEGRAM_BOT_TOKEN", None)
+            script = Path(__file__).resolve().parents[2] / "quickstart" / "start.ps1"
+            proc = subprocess.run(
+                ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                env=env, capture_output=True, timeout=35,
+            )
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn(b"A4", proc.stdout)
+
     def test_powershell_launcher_consumes_matching_dpapi_filename(self):
         script = (Path(__file__).resolve().parents[2] / "quickstart" / "start.ps1").read_text(encoding="utf-8-sig")
         gui = (Path(__file__).resolve().parent / "setup.ps1").read_text(encoding="utf-8-sig")
