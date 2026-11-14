@@ -84,6 +84,23 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Policy("read_only", "projects", self.root, self.root.parent)
 
+    def test_git_index_refresh_and_outside_trash_are_denied(self):
+        p = self.policy("full_access")
+        for name in ("git_status", "git_diff", "git_log", "trash_path"):
+            self.check_denied(p, name, {"workspace": "projects",
+                                       "path": "allowed/sub"})
+
+    def test_search_glob_must_remain_a_basename_pattern(self):
+        p = self.policy("read_only")
+        for glob in ("../*.key", r"..\*.key", "folder/*.py",
+                     r"folder\*.py", "C:secret", ""):
+            self.check_denied(p, "search_text", {
+                "workspace": "projects", "path": "allowed/sub",
+                "query": "needle", "filename_glob": glob},
+                "unsafe_filename_glob")
+        p.check("search_text", {"workspace": "projects", "path": "allowed/sub",
+                               "query": "needle", "filename_glob": "*.py"})
+
     def test_immutable_policy(self):
         from dataclasses import FrozenInstanceError
         with self.assertRaises(FrozenInstanceError):
