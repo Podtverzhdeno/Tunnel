@@ -38,10 +38,16 @@ def main() -> int:
                    ("relay","gateway","receipts")))
     # Do not display terminal output: it can contain personal paths or
     # warnings from the user's own services.
+    stdout = done.stdout.decode("utf-8", errors="replace")
+    bridge_ready = "WEB_COMPANION_BRIDGE_AUTH_OK" in stdout
     result={"status":"PASS" if done.returncode==0 and unchanged else "FAIL",
             "launcher_executed":True,
             "launcher_exit_code":done.returncode,
             "service_and_receipt_identity_unchanged":unchanged,
+            "web_companion_bridge_authenticated":bridge_ready,
+            "autopilot_send_unverified_warning":(
+                "AUTOPILOT_SEND_UNVERIFIED" in stdout
+            ),
             "sent_messages_by_test":0,
             "uploaded_files_by_test":0}
     print(json.dumps(result))
