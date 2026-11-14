@@ -27,7 +27,7 @@ from hermes_live_dom_fixture_e2e import CHAT, ROOT_FIXTURE_HTML
 import relay
 
 
-async def run():
+async def run(client_kind='cli'):
     # Imports requiring Playwright/MCP SDK happen only after the isolated
     # virtualenv trampoline; the system Python has neither package.
     from cdp_attach_smoke_suite import edge_path, debug_port
@@ -101,11 +101,15 @@ async def run():
                 await page.route("**/*",offline_route)
                 await page.goto(CHAT,wait_until="domcontentloaded",timeout=15000)
                 # The browser never makes a real HTTP request to chatgpt.com.
+                if client_kind=="telegram":
+                    client_args=[str(cli),
+                        str(ROOT/"planning"/"hermes_live_mcp_telegram_sdk_child.py")]
+                else:
+                    client_args=[str(cli),"-m","hermes_cli.main","-z",
+                        "Return the literal marker LIVE_DOM_FIXTURE_OK without using tools.",
+                        "--provider","custom","-m",relay.MODEL_CDP,"-t",""]
                 cli_process=await asyncio.create_subprocess_exec(
-                    str(cli),"-m","hermes_cli.main","-z",
-                    "Return the literal marker LIVE_DOM_FIXTURE_OK without using tools.",
-                    "--provider","custom","-m",relay.MODEL_CDP,"-t","",
-                    cwd=hermes_home,env=cli_env,
+                    *client_args,cwd=hermes_home,env=cli_env,
                     stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
                 try:
                     # Ensure the Hermes SDK actually submitted its HTTP model
@@ -138,14 +142,42 @@ async def run():
                         side_out,side_err=await asyncio.wait_for(sidecar.communicate(),timeout=75)
                         cli_out,cli_err=await asyncio.wait_for(cli_process.communicate(),timeout=55)
                         result=cli_out.decode("utf8",errors="replace")
+                        if client_kind=="telegram":
+                            try:
+                                telegram_receipt=json.loads(
+                                    result.strip().splitlines()[-1])
+                            except (ValueError, IndexError):
+                                telegram_receipt={}
+                            accepted=(
+                                telegram_receipt.get("ok") is True
+                                and telegram_receipt.get("native_telegram_sdk_inbound") is True
+                                and telegram_receipt.get("mock_telegram_send_result_ack") is True
+                                and telegram_receipt.get("mock_reply_same_chat") is True
+                                and telegram_receipt.get("mock_reply_same_topic") is True
+                            )
+                        else:
+                            telegram_receipt={}
+                            accepted="LIVE_DOM_FIXTURE_OK" in result
                         with queue.lock:
                             states=queue.db.execute("SELECT state FROM requests").fetchall()
                         clicks=await page.evaluate("window.sendCount")
                         report={
                             "ok":sidecar.returncode==0 and cli_process.returncode==0
                                 and len(states)==1 and states[0]["state"]=="done"
-                                and clicks==1 and "LIVE_DOM_FIXTURE_OK" in result,
-                            "hermes_cli":"actual_installed",
+                                and clicks==1 and accepted,
+                            "client":"installed_Hermes_CLI" if client_kind=="cli"
+                                     else "native_Hermes_Telegram_SDK",
+                            "native_telegram_sdk_inbound":client_kind=="telegram",
+                            "mock_telegram_api_ack":telegram_receipt.get(
+                                "mock_telegram_send_result_ack",False),
+                            "mock_reply_same_chat":telegram_receipt.get(
+                                "mock_reply_same_chat",False),
+                            "mock_reply_same_topic":telegram_receipt.get(
+                                "mock_reply_same_topic",False),
+                            "synthetic_forum_source_bound":telegram_receipt.get(
+                                "source_thread_bound",False),
+                            "synthetic_topic_metadata":telegram_receipt.get(
+                                "mock_outbound_metadata"),
                             "relay":"real_ephemeral_http",
                             "mcp":"actual_stdio_sidecar_and_server",
                             "browser":"real_Edge_connect_over_cdp",
@@ -153,7 +185,7 @@ async def run():
                             "browser_sends":clicks,
                             "relay_request_count":len(states),
                             "relay_state":states[0]["state"] if len(states)==1 else "unexpected",
-                            "hermes_got_model_answer":"LIVE_DOM_FIXTURE_OK" in result,
+                            "hermes_got_model_answer":accepted,
                             "cli_exit_code":cli_process.returncode,
                             "sidecar_exit_code":sidecar.returncode,
                             "web_extension_used":False,
@@ -175,13 +207,17 @@ async def run():
                 await browser.close()
 
 if __name__=="__main__":
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--client",choices=("cli","telegram"),default="cli")
+    options=parser.parse_args()
     venv=ROOT/".venv-cdp"/"Scripts"/"python.exe"
     if Path(sys.executable).resolve()!=venv.resolve():
         if not venv.is_file():
             print('{"ok":false,"reason":"cdp_venv_missing"}')
             raise SystemExit(2)
         try:
-            r=subprocess.run([str(venv),str(Path(__file__).resolve())],
+            r=subprocess.run([str(venv),str(Path(__file__).resolve()),"--client",options.client],
                 cwd=ROOT,capture_output=True,text=True,encoding="utf8",
                 errors="replace",timeout=190)
         except subprocess.TimeoutExpired:
@@ -192,7 +228,7 @@ if __name__=="__main__":
             print(r.stderr.strip()[-1500:],file=sys.stderr)
         raise SystemExit(r.returncode)
     try:
-        asyncio.run(run())
+        asyncio.run(run(options.client))
     except Exception as exc:
         import traceback
         frames=traceback.extract_tb(exc.__traceback__)
