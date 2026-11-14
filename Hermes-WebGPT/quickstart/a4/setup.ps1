@@ -1,4 +1,5 @@
 ﻿# Windows PowerShell 5.1 + WinForms. Does not launch unguarded MCP.
+param([switch]$SmokeTest)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
@@ -10,7 +11,7 @@ $browserCandidates = @((Join-Path $env:LOCALAPPDATA 'Yandex\YandexBrowser\Applic
 $browserDefault = ($browserCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1)
 if (-not $browserDefault) { $browserDefault = '' }
 $f = New-Object Windows.Forms.Form
-$f.Text='Hermes — установка и разрешения';$f.Width=680;$f.Height=700
+$f.Text='Hermes — установка и разрешения';$f.Width=680;$f.Height=765
 $f.StartPosition='CenterScreen';$f.MaximizeBox=$false;$f.FormBorderStyle='FixedDialog'
 $f.Font=New-Object Drawing.Font('Segoe UI',10)
 function L([string]$v,[int]$y,[int]$height=27) {
@@ -196,4 +197,73 @@ $prepare.Add_Click({
     }
 })
 $f.Controls.Add($prepare)
+$runReadonly=New-Object Windows.Forms.Button
+$runReadonly.Text='Запустить защищённый MCP (только чтение)'
+$runReadonly.Left=22;$runReadonly.Top=639;$runReadonly.Width=616;$runReadonly.Height=33
+$runReadonly.Add_Click({
+    try {
+        if ($mode.SelectedIndex -ne 0) {
+            throw 'Для полного доступа нужен отдельный защищённый брокер.'
+        }
+        if (-not (Test-Path -LiteralPath $configFile -PathType Leaf)) {
+            throw 'Сначала сохраните настройки.'
+        }
+        $saved = Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($saved.mode -ne 'read_only' -or $saved.scope -ne $scope.Text -or
+            $saved.browser_exe -ne $browser.Text -or $saved.workers -ne [int]$workers.Value) {
+            throw 'Изменились настройки. Сначала сохраните текущий выбор.'
+        }
+        $python=Get-Command python.exe -ErrorAction SilentlyContinue
+        if (-not $python) { throw 'Python не установлен.' }
+        $tokenFile=Join-Path $state 'observer-token.dpapi.xml'
+        $newToken=$false
+        if (Test-Path -LiteralPath $tokenFile -PathType Leaf) {
+            $secure=Import-Clixml -LiteralPath $tokenFile
+            if ($secure -isnot [System.Security.SecureString]) {
+                throw 'Повреждён ключ observer. Требуется безопасное восстановление.'
+            }
+        } else {
+            $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
+            try {
+                $bytes=New-Object byte[] 48
+                $rng.GetBytes($bytes)
+            } finally { $rng.Dispose() }
+            $token=[Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+            $secure=ConvertTo-SecureString $token -AsPlainText -Force
+            $newToken=$true
+        }
+        # Persist the encrypted key *before* launching the server, so a
+        # crash between readiness and UI return cannot orphan a live server
+        # with an unrecoverable bearer. Never write plaintext to disk.
+        if ($newToken) {
+            $secure | Export-Clixml -LiteralPath $tokenFile
+        }
+        $env:LOCAL_MCP_OBSERVER_BEARER=[System.Net.NetworkCredential]::new('', $secure).Password
+        try {
+            $lines = & $python.Source -m quickstart.a4.observer_runtime start --project $project --settings $configFile --state $state --port 18766
+            if ($LASTEXITCODE -ne 0) { throw 'Не прошёл запуск или проверка MCP.' }
+            $report=($lines | Select-Object -Last 1) | ConvertFrom-Json
+            if ($report.ok -ne $true -or $report.read_only -ne $true -or
+                $report.tool_count -ne 6) {
+                throw 'Защищённый профиль не подтверждён.'
+            }
+            $status.Text='Read-only MCP готов на 127.0.0.1:18766; Tunnel отдельно НЕ подключён.'
+        } finally {
+            Remove-Item Env:LOCAL_MCP_OBSERVER_BEARER -ErrorAction SilentlyContinue
+        }
+    } catch {
+        $status.Text='Защищённый MCP не запущен. Исправьте настройки или диагностику.'
+        [void][Windows.Forms.MessageBox]::Show($_.Exception.Message,'Hermes','OK','Warning')
+    }
+})
+$f.Controls.Add($runReadonly)
+if ($SmokeTest) {
+    if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
+        -not $save.Enabled -or -not $recover.Enabled) {
+        throw 'a4_gui_control_construction_failed'
+    }
+    $f.Dispose()
+    Write-Output 'A4_GUI_SMOKE_OK'
+    exit 0
+}
 [void]$f.ShowDialog()
