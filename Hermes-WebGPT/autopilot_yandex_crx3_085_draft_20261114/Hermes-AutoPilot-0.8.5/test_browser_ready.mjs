@@ -12,7 +12,7 @@ function runtime(states,{url='https://chatgpt.com/',status='complete',documentId
     calls.push(opts);
     const state=states[Math.min(current++,states.length-1)];
     if(state instanceof Error)throw state;
-    return [{frameId:0,documentId,result:{schema:1,origin:'https://chatgpt.com',
+    return [{frameId:0,documentId,result:{schema:1,origin:'https://chatgpt.com',pathname:'/',
       state,editorEmpty:true,hasAttachments:false,
       chatModeConfirmed:state==='READY',hasModeControl:true}}];
   }}
@@ -84,6 +84,42 @@ test('no result from chrome.scripting is not accepted',async()=>{
  const r=runtime(['READY']);
  r.chromeAPI.scripting.executeScript=async()=>[];
  assert.equal((await run(r)).state,'DOCUMENT_NOT_PROVEN');
+});
+test('same-origin auth route is not a valid owned chat page',async()=>{
+ const r=runtime(['READY'],{url:'https://chatgpt.com/auth/login'});
+ assert.equal((await run(r)).state,'FOREIGN_TAB');
+ assert.equal(r.calls.length,0);
+});
+test('a Web Companion-owned relay hash cannot be adopted by AutoPilot',async()=>{
+ const r=runtime(['READY'],{url:'https://chatgpt.com/#hermes-relay=123'});
+ assert.equal((await run(r)).state,'FOREIGN_TAB');
+ assert.equal(r.calls.length,0);
+});
+test('changing conversation route between readiness probe and tab recheck is blocked',async()=>{
+ const r=runtime(['READY']);
+ let n=0;
+ r.chromeAPI.tabs.get=async id=>({id,status:'complete',
+   url:++n===1?'https://chatgpt.com/':'https://chatgpt.com/c/unrelated'});
+ const result=await run(r);
+ assert.equal(result.state,'TAB_CHANGED');
+ assert.equal(r.calls.length,1);
+});
+test('document path mismatch is not a confirmed composer',async()=>{
+ const r=runtime(['READY']);
+ r.chromeAPI.scripting.executeScript=async()=>[{
+   frameId:0,documentId:DOC,
+   result:{schema:1,origin:'https://chatgpt.com',pathname:'/c/unrelated',state:'READY'}
+ }];
+ assert.equal((await run(r)).state,'DOCUMENT_NOT_PROVEN');
+});
+test('conversation editor without proven Chat mode fails closed',async()=>{
+ const r=runtime(['MODE_CONTROL_NOT_VERIFIED'],{url:'https://chatgpt.com/c/fixture'});
+ r.chromeAPI.scripting.executeScript=async()=>[{
+   frameId:0,documentId:DOC,
+   result:{schema:1,origin:'https://chatgpt.com',
+     pathname:'/c/fixture',state:'MODE_CONTROL_NOT_VERIFIED'}
+ }];
+ assert.equal((await run(r)).state,'MODE_CONTROL_NOT_VERIFIED');
 });
 test('no automatic ChatGPT send, refresh, or tab creation is invoked',async()=>{
  const r=runtime(['READY']);

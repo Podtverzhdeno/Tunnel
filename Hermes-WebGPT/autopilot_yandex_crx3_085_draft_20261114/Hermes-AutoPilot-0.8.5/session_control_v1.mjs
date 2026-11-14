@@ -12,8 +12,8 @@ import {previewTurnBinding} from './handoff_contract.mjs';
 export const SESSION_API_VERSION=1;
 const RECORD_KEY='hermesAutopilotBrowserHealthV1';
 const SEND_PREFIX='hermesAutopilotSendIntentV1_';
+const UNKNOWN_WORKER_PREFIX='hermesAutopilotUnknownWorkerSendV1_';
 const RETRYABLE=new Set(['TAB_LOADING','COMPOSER_NOT_READY','CHAT_READY_TIMEOUT','DOM_PROBE_FAILED']);
-const hex=/^[0-9a-f]{64}$/;
 function fail(code){throw Error(code);}
 function own(run,owned,workerId){
   const slot=run?.slots?.find(s=>s.id===workerId);
@@ -44,6 +44,15 @@ export function createSessionController({
     const rec=(await chromeAPI.storage.local.get(RECORD_KEY))[RECORD_KEY];
     return rec?.schema===1&&rec.runId===runId&&rec.sessions&&
       !Array.isArray(rec.sessions) ? rec : {schema:1,runId,sessions:{}};
+  }
+  async function hasUnknownSend(runId,workerId){
+    if(typeof runId!=='string' || typeof workerId!=='string')
+      fail('UNKNOWN_SEND_QUERY_INVALID');
+    const key=UNKNOWN_WORKER_PREFIX+runId+'_'+workerId;
+    const marker=(await chromeAPI.storage.local.get(key))[key];
+    // An unreconciled worker marker remains authoritative across tab
+    // reloads, MV3 worker restarts and run rehydration. Do not delete here.
+    return marker!==undefined;
   }
   async function inspect(workerId,{maxAttempts=1,timeoutMs=1200}={}){
     const run=await readRun();if(!run||run.status==='STOPPED')fail('RUN_NOT_ACTIVE');
@@ -104,7 +113,7 @@ export function createSessionController({
       const rec=await load(run.id),entry=rec.sessions[slot.id];
       // An assigned task may contain an unsent draft or unknown send.
       // Never auto-reload an assigned, paused, or disconnected session.
-      if(slot.taskId!==null || slot.pendingSend ||
+      if(await hasUnknownSend(run.id,slot.id) || slot.taskId!==null || slot.pendingSend ||
          slot.phase!=='IDLE' || !RETRYABLE.has(health.state) ||
          entry.errorStreak<3 || entry.reloads>=2 ||
          clock()-(entry.lastReloadAt||0)<60000)continue;
@@ -143,9 +152,12 @@ export function createSessionController({
       const rec=await load(run.id);
       return {schema:1,state:'OBSERVED',accepted:true,
         runId:run.id,runStatus:run.status,
-        sessions:run.slots.map(s=>({workerId:s.id,tabId:s.tabId,
+        sessions:await Promise.all(run.slots.map(async s=>({
+          workerId:s.id,tabId:s.tabId,
           phase:s.phase,taskId:s.taskId,
-          browser:rec.sessions[s.id]?.state||'NOT_PROBED'}))};
+          browser:rec.sessions[s.id]?.state||'NOT_PROBED',
+          sendReconciliationRequired:await hasUnknownSend(run.id,s.id)
+        })))};
     }
     const owned=await readOwned(),slot=own(run,owned,req.workerId);
     if(req.op==='ENSURE_READY'){
@@ -153,7 +165,8 @@ export function createSessionController({
         timeoutMs:Math.min(req.timeoutMs||15000,30000)});
     }
     if(req.op==='CLOSE_IDLE'){
-      if(slot.taskId!==null||slot.pendingSend||slot.phase!=='IDLE')
+      if(slot.taskId!==null||slot.pendingSend||slot.phase!=='IDLE'||
+         await hasUnknownSend(run.id,slot.id))
         return {schema:1,state:'INCOMPLETE_TASK_PRESERVED',accepted:false};
       const closed=await safeClose(run.id,slot.id,slot.tabId);
       return {schema:1,state:closed?'IDLE_TAB_CLOSED':'TAB_NOT_CLOSED',
@@ -180,17 +193,38 @@ export function createSessionController({
     const ready=await inspect(slot.id,{maxAttempts:6,timeoutMs:15000});
     if(ready.state!=='READY'||ready.editorEmpty!==true||
        ready.hasAttachments===true||
-       (ready.hasModeControl===true && ready.chatModeConfirmed!==true))return {
+       ready.chatModeConfirmed!==true)return {
       schema:1,state:'CHAT_NOT_READY_FOR_SEND',accepted:false,
       sendPerformed:false,lastObservation:ready.state};
+    // Readiness can outlive the owning task. Revalidate the full epoch
+    // immediately before creating the irreversible send-intent fence.
+    const newest=await readRun(), latestOwned=await readOwned();
+    const current=newest?.slots?.find(s=>s.id===slot.id);
+    const currentTask=newest?.tasks?.find(t=>t.id===req.taskId);
+    if(newest?.id!==run.id || newest.status!=='ACTIVE' ||
+       current?.tabId!==slot.tabId || current?.phase!=='WORKING' ||
+       current?.taskId!==req.taskId || current?.epoch!==req.epoch ||
+       current?.pendingSend || currentTask?.status!=='RUNNING' ||
+       latestOwned?.[String(slot.tabId)]?.runId!==run.id ||
+       latestOwned?.[String(slot.tabId)]?.workerId!==slot.id)
+      return {schema:1,state:'STALE_LEASE_AFTER_READINESS',
+        accepted:false,sendPerformed:false};
+    const workerKey=UNKNOWN_WORKER_PREFIX+run.id+'_'+slot.id;
     const key=SEND_PREFIX+preview.turnId;
     const original=(await chromeAPI.storage.local.get(key))[key];
-    if(original!==undefined)return {schema:1,state:'UNKNOWN_SEND_RECONCILIATION_REQUIRED',
+    if(original!==undefined||await hasUnknownSend(run.id,slot.id))return {schema:1,state:'UNKNOWN_SEND_RECONCILIATION_REQUIRED',
       accepted:false,sendPerformed:false};
     const nonce=crypto.randomUUID();
     const record={schema:1,state:'UNKNOWN_SEND',runId:run.id,
       workerId:slot.id,taskId:req.taskId,epoch:req.epoch,
       turnId:preview.turnId,attemptId:nonce,createdAt:clock()};
+    // The per-worker fence precedes the per-turn fence; if the browser
+    // crashes between writes, the false-positive block is safe. An adapter
+    // MUST NOT be invoked without durable readback of both markers.
+    await chromeAPI.storage.local.set({[workerKey]:record});
+    const workerProof=(await chromeAPI.storage.local.get(workerKey))[workerKey];
+    if(workerProof?.attemptId!==nonce)return {schema:1,
+      state:'UNKNOWN_SEND_RECONCILIATION_REQUIRED',accepted:false};
     await chromeAPI.storage.local.set({[key]:record});
     const persisted=(await chromeAPI.storage.local.get(key))[key];
     if(persisted?.attemptId!==nonce)return {schema:1,
@@ -210,5 +244,5 @@ export function createSessionController({
         accepted:false,sendPerformed:'UNKNOWN'};
     }
   }
-  return Object.freeze({inspect,scan,control});
+  return Object.freeze({inspect,scan,control,hasUnknownSend});
 }

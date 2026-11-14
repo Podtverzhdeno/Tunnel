@@ -53,6 +53,13 @@ The two Python convenience runners expect `Hermes-WebGPT\.venv-cdp\Scripts\pytho
 - An unresolved saved tab ID blocks restart even if the browser-session ownership map is lost after suspension.
 - Final focused suite **27/27 PASS**, job `546acd52727749cdbb2e7e96f126b472`, returncode 0. This does not change the LIVE HTTP 403 / absent signed-in E2E limitation.
 
+### Latest hardening checkpoint
+
+- **37/37 Node PASS**, job `63921660de7f4ebdb47a5e63b1ef222e`. Send intent now needs a fresh run/task/epoch check and two durable unknown fences. IDLE close/reload is disallowed while a worker-level uncertain-send marker exists.
+- **Actual Yandex binary with synthetic page PASS**, job `f4cfe90eb1014e3185808c59ed858819`: Work→Chat, offline/online, reload, and refusal of an unverified `/c/` composer; `max_open_tabs=1`, `send_clicks=0`, `external_network_requests=0`.
+- The real signed-in ChatGPT E2E, authentic Web Companion 0.9.7 send lease, model response and Telegram provider receipt remain **NOT VERIFIED**. Avoid reporting synthetic answer DOM or script exit 0 as real completion.
+- Remaining A2/A3 P0: implement a trusted reconciliation operation for persistent UNKNOWN_SEND worker/turn markers and an authenticated adapter. Without either, release remains blocked.
+
 ## SDD / handoff
 - OpenSpec / SDD: `openspec/changes/add-hermes-continuous-execution/design.md`, FR-AP-001–010.
 - Implementation checklist: `openspec/changes/add-hermes-continuous-execution/tasks.md`.

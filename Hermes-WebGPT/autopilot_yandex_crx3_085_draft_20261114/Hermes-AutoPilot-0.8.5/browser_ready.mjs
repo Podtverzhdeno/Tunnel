@@ -13,6 +13,7 @@ export function inspectChatComposer(options = {}) {
         /^\/c\/[A-Za-z0-9_-]+\/?$/.test(location.pathname))) {
     return out('FOREIGN_DOCUMENT');
   }
+  if (location.hash) return out('FOREIGN_DOCUMENT');
   if (navigator.onLine === false) return out('OFFLINE');
   if (document.readyState === 'loading' || !document.body) {
     return out('LOADING');
@@ -25,40 +26,72 @@ export function inspectChatComposer(options = {}) {
     const style=getComputedStyle(node);
     return style.visibility!=='hidden' && style.display!=='none';
   };
-  const label = node => (node?.getAttribute('aria-label') ||
-    node?.innerText || node?.textContent || '').trim().toLocaleLowerCase('ru');
-  const selected = node =>
-    node.getAttribute('aria-pressed')==='true' ||
-    node.getAttribute('aria-selected')==='true' ||
-    node.getAttribute('data-state')==='active' ||
-    node.getAttribute('data-selected')==='true' ||
-    node.getAttribute('aria-current')==='page';
+  const label = node => (node?.innerText || node?.textContent ||
+    node?.getAttribute('aria-label') || '').replace(/\s+/g,' ').trim().toLowerCase();
+  // Mirror Web Companion 0.9.7's conservative mode evidence:
+  // explicit selected attributes OR a unique visible composer placeholder.
+  const choiceState = node => {
+    for (const [key,on,off] of [
+      ['aria-selected','true','false'],['aria-pressed','true','false'],
+      ['aria-checked','true','false'],['data-state','active','inactive'],
+      ['data-selected','true','false']
+    ]) {
+      const state=node?.getAttribute(key)?.toLowerCase();
+      if(state===on)return true;
+      if(state===off)return false;
+    }
+    return null;
+  };
   const CHAT = new Set(['чат','chat']);
   const WORK = new Set(['работа','work']);
-  // Only a paired segmented control is allowed. A sidebar "Chat" button
-  // does not qualify as the mode switch.
-  const controls=[...document.querySelectorAll('button,[role="tab"],[role="radio"]')]
-    .filter(visible);
+  const groupOf = node => node.closest('[role="tablist"],[role="radiogroup"]') ||
+    node.parentElement;
+  const controls=[...document.querySelectorAll(
+    'button,[role="tab"],[role="radio"],[role="button"]')].filter(visible);
   const groups=[];
-  for(const node of controls.filter(x=>CHAT.has(label(x)))) {
-    const parent=node.parentElement;
-    if(!parent)continue;
-    const sibling=controls.filter(x=>x!==node &&
-      parent.contains(x) && WORK.has(label(x)));
-    if(sibling.length===1)groups.push({chat:node,work:sibling[0]});
+  const cap=Math.min(240,window.innerHeight*.28);
+  for(const chat of controls.filter(x=>CHAT.has(label(x)))) {
+    for(const work of controls.filter(x=>WORK.has(label(x)))) {
+      if(chat===work || !groupOf(chat) || groupOf(chat)!==groupOf(work))continue;
+      const c=chat.getBoundingClientRect(),w=work.getBoundingClientRect();
+      if(c.top<0||w.top<0||c.top>cap||w.top>cap)continue;
+      groups.push({chat,work});
+    }
   }
   if(groups.length>1)return out('AMBIGUOUS_MODE');
+  let chatModeConfirmed=false;
   if(groups.length===1){
     const {chat,work}=groups[0];
-    if(selected(work) && !selected(chat)){
+    const chatSelected=choiceState(chat),workSelected=choiceState(work);
+    if(chatSelected===true&&workSelected===true)return out('AMBIGUOUS_MODE');
+    let placeholder='unknown';
+    const inputNodes=[...document.querySelectorAll(
+      '[data-placeholder],[placeholder],[aria-placeholder]')].filter(visible);
+    for(const el of inputNodes){
+      for(const key of ['data-placeholder','placeholder','aria-placeholder']){
+        const value=(el.getAttribute(key)||'').trim().toLowerCase();
+        if(/^(работайте с chatgpt|work with chatgpt)$/.test(value))placeholder='work';
+        if(/^(спросить chatgpt|спросите chatgpt|спросите что угодно|ask chatgpt|ask anything|message chatgpt)$/.test(value) &&
+           placeholder!=='work')placeholder='chat';
+      }
+    }
+    if(workSelected===true||placeholder==='work'){
       if(options.switchToChat===true){
-        // This is NOT proof that Chat mode has loaded; probe again.
+        // A click is a request, never readiness; the next probe must confirm.
         try{chat.click();}catch{return out('MODE_CLICK_FAILED');}
         return out('MODE_SWITCH_REQUESTED');
       }
       return out('WORK_MODE');
     }
-    if(selected(chat)&&selected(work))return out('AMBIGUOUS_MODE');
+    chatModeConfirmed=(chatSelected===true && workSelected!==true) ||
+      (placeholder==='chat' && workSelected!==true);
+    if(!chatModeConfirmed)return out('MODE_SELECTION_UNVERIFIED');
+  }else {
+    // On saved /c/ conversations the mode toggle can disappear. An
+    // editable composer is NOT proof that the same Chat mode persisted.
+    // A trusted Web Companion lease may establish that separately.
+    const login=controls.some(x=>/^(войти|log in|sign in)$/.test(label(x)));
+    return out(login?'AUTH_REQUIRED':'MODE_CONTROL_NOT_VERIFIED');
   }
 
   const byId=[...document.querySelectorAll('#prompt-textarea')].filter(visible);
@@ -95,7 +128,7 @@ export function inspectChatComposer(options = {}) {
     editorKind:textarea?'textarea':'contenteditable',
     editorEmpty:content.trim().length===0,
     hasAttachments:attachments>0,
-    chatModeConfirmed:groups.length===1 ? selected(groups[0].chat):false,
+    chatModeConfirmed,
     // Only metadata crosses the extension boundary. Never include user text.
     hasModeControl:groups.length===1
   });
@@ -120,9 +153,15 @@ export async function ensureChatReady({
     catch{return {schema:1,state:'TAB_UNAVAILABLE',attempts:attempt};}
     let url;
     try{url=new URL(tab.url||tab.pendingUrl);}catch{return {schema:1,state:'TAB_NAVIGATING',attempts:attempt};}
-    if(url.origin!=='https://chatgpt.com'){
+    if(url.origin!=='https://chatgpt.com' ||
+       !(/^\/$/.test(url.pathname) ||
+         /^\/c\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)) || url.hash){
       return {schema:1,state:'FOREIGN_TAB',attempts:attempt};
     }
+    const expected=url.origin+url.pathname+url.search;
+    const pending=tab.pendingUrl?new URL(tab.pendingUrl):null;
+    if(pending && (pending.origin+pending.pathname+pending.search!==expected ||
+                   pending.hash))return {schema:1,state:'TAB_NAVIGATING',attempts:attempt};
     if(tab.status!=='complete'){
       last='TAB_LOADING';
     }else {
@@ -134,7 +173,8 @@ export async function ensureChatReady({
         });
         if(!Array.isArray(r)||r.length!==1||r[0].frameId!==0 ||
            typeof r[0].documentId!=='string' || r[0].documentId.length<12 ||
-           r[0].result?.schema!==1 || r[0].result?.origin!=='https://chatgpt.com'){
+           r[0].result?.schema!==1 || r[0].result?.origin!=='https://chatgpt.com' ||
+           r[0].result?.pathname!==url.pathname){
           return {schema:1,state:'DOCUMENT_NOT_PROVEN',attempts:attempt+1};
         }
         probe={...r[0].result,documentId:r[0].documentId};
@@ -148,9 +188,12 @@ export async function ensureChatReady({
           // Re-check ownership and tab after asynchronous DOM operations.
           if(await assertOwned()!==true)return {schema:1,state:'OWNERSHIP_LOST',attempts:attempt+1};
           const again=await chromeAPI.tabs.get(tabId).catch(()=>null);
-          let afterOrigin='';
-          try{afterOrigin=new URL(again?.url||again?.pendingUrl).origin;}catch{}
-          if(!again || again.id!==tabId || afterOrigin!=='https://chatgpt.com'){
+          let afterURL=null;
+          try{afterURL=new URL(again?.url||again?.pendingUrl);}catch{}
+          if(!again || again.id!==tabId || again.status!=='complete' ||
+             !afterURL || afterURL.hash ||
+             afterURL.origin+afterURL.pathname+afterURL.search!==expected ||
+             (again.pendingUrl && again.pendingUrl!==again.url)){
             return {schema:1,state:'TAB_CHANGED',attempts:attempt+1};
           }
           return {schema:1,state:'READY',attempts:attempt+1,
@@ -163,7 +206,8 @@ export async function ensureChatReady({
         }
         if(['FOREIGN_DOCUMENT','OFFLINE','AUTH_REQUIRED',
             'AMBIGUOUS_MODE','AMBIGUOUS_COMPOSER',
-            'COMPOSER_DISABLED','MODE_CLICK_FAILED'].includes(last)){
+            'COMPOSER_DISABLED','MODE_CLICK_FAILED',
+            'MODE_CONTROL_NOT_VERIFIED','MODE_SELECTION_UNVERIFIED'].includes(last)){
           return {schema:1,state:last,attempts:attempt+1};
         }
       }

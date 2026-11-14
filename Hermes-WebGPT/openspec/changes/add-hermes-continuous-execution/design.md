@@ -116,6 +116,14 @@ without Send and with the existing one-shot draft fence.
 - **FR-AP-008 negative:** WHEN a stopped run loses its volatile ownership entry but a saved tab ID still resolves, THEN a new run MUST be blocked. Absence of an ownership record is never evidence that a browser tab was closed. A5 shall test this after MV3 suspension.
 - Review regression: **27/27 Node PASS** with actual job `546acd52727749cdbb2e7e96f126b472`, rc 0. Live signed-in ChatGPT/Telegram acceptance remains OPEN.
 
+### P0 hardening: no replay, route binding, Chat mode proof (2026-11-14)
+
+- **FR-AP-001 / 002 — strict route:** Readiness on `https://chatgpt.com/` and `/c/<known-conversation>` SHALL check the exact origin, path, navigation/pending URL and an empty hash; a Relay-owned `#hermes-relay=...` route MUST NOT be adopted by AutoPilot. Recheck the top frame URL after the DOM inspection, and require a matching document path/documentId.
+- **FR-AP-002 — Chat evidence:** Even when the composer is visible, a saved `/c/` conversation without the verified Chat/Work mode control SHALL return `MODE_CONTROL_NOT_VERIFIED`. AutoPilot MUST NOT submit or automatically draft from that ambiguity. Web Companion may independently establish an authenticated prior Chat-mode proof; a generic editable field is not that proof.
+- **FR-AP-005 / 007 — unknown send fencing:** Immediately before transfer to a trusted Web Companion adapter, re-read the current run/task/epoch and worker tab ownership. Store and read back **per-worker UNKNOWN_SEND** first and **per-turn UNKNOWN_SEND** second. An interrupted storage write MAY create a false-positive block but MUST NOT reach the adapter. Markers persist after MV3 restarts, even when the task changes to IDLE. Idle-refresh and tab-close/Stop MUST consult the worker marker.
+- **FR-AP-006 / 009 — A2/A3 observability:** STATUS includes `sendReconciliationRequired` without message or credential content. The API supports read-only readiness, but SendIntent remains disconnected until Web Companion 0.9.7 attests actual lease. A2/A3 role strings alone are not authorization. The permanent marker can only be cleared through a separately designed, authenticated reconciliation operation, not a browser timeout or model text.
+- **FR-AP-010 — evidence:** 37/37 Node tests PASS (job `63921660de7f4ebdb47a5e63b1ef222e`); actual Yandex binary + **synthetic** ChatGPT-origin fixture PASS (job `f4cfe90eb1014e3185808c59ed858819`): Work→Chat, offline/online, same-tab reload, and mode-unverified saved conversation all verified; one tab, zero Send, zero external requests. This is NOT an authenticated ChatGPT model or Telegram E2E.
+
 ### A2/A3 / A5 handoff and release gate
 
 A2/A3 should bind an authenticated Web Companion adapter to

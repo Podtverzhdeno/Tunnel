@@ -31,7 +31,8 @@ def run():
       "reload_recovery_verified":False,"offline_detected":False,
       "online_recovery_verified":False,"response_fixture_visible":False,
       "external_network_requests":0,"send_clicks":0,
-      "max_open_tabs":0,"model_response_verified":False}
+      "max_open_tabs":0,"model_response_verified":False,
+      "conversation_without_mode_blocks":False}
  script=(ROOT/"browser_ready.mjs").read_text(encoding="utf8").split(
        "export async function ensureChatReady")[0]
  script=script.replace("export function inspectChatComposer",
@@ -76,6 +77,14 @@ def run():
    recover=page.evaluate("window.hermesInspectChatComposer({switchToChat:false})")
    out["reload_recovery_verified"]=again.get("state")=="MODE_SWITCH_REQUESTED" and (
       recover.get("state")=="READY")
+   page.evaluate("""() => {
+     history.pushState({},'', '/c/synthetic-conversation');
+     document.querySelector('nav[role="tablist"]').remove();
+   }""")
+   no_mode=page.evaluate(
+     "window.hermesInspectChatComposer({switchToChat:false})")
+   out["conversation_without_mode_blocks"]=(
+     no_mode.get("state")=="MODE_CONTROL_NOT_VERIFIED")
    out["max_open_tabs"]=max(out["max_open_tabs"],len(context.pages))
    out["send_clicks"]=int(page.locator("#sendCount").inner_text())
    context.close()
@@ -87,5 +96,6 @@ if __name__=="__main__":
  assert result["max_open_tabs"]==1 and result["send_clicks"]==0
  keys=("real_yandex_binary","origin_verified","dom_editor_ready",
        "work_mode_detected","chat_mode_selected","reload_recovery_verified",
-       "offline_detected","online_recovery_verified","response_fixture_visible")
+       "offline_detected","online_recovery_verified","response_fixture_visible",
+       "conversation_without_mode_blocks")
  if not all(result[k] for k in keys):sys.exit(2)

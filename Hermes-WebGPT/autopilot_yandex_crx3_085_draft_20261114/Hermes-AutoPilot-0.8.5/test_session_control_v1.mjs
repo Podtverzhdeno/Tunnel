@@ -23,7 +23,7 @@ function fixture({idle=false,observe='READY',adapter=null,now=100000}={}){
   scripting:{async executeScript(opts){
     signals.script++;
     return [{frameId:0,documentId:DOC,result:{
-      schema:1,origin:'https://chatgpt.com',state:observe,
+      schema:1,origin:'https://chatgpt.com',pathname:'/',state:observe,
       editorEmpty:true,hasAttachments:false,chatModeConfirmed:true,
       hasModeControl:true}}];
   }}
@@ -45,7 +45,7 @@ test('Work-to-Chat attempt counts against the persisted switch budget',async()=>
  x.chromeAPI.scripting.executeScript=async ()=>{
    const state=++count===1?'MODE_SWITCH_REQUESTED':'READY';
    return [{frameId:0,documentId:DOC,result:{
-     schema:1,origin:'https://chatgpt.com',state,
+     schema:1,origin:'https://chatgpt.com',pathname:'/',state,
      editorEmpty:true,hasAttachments:false,
      chatModeConfirmed:state==='READY',hasModeControl:true
    }}];
@@ -152,6 +152,102 @@ test('idle/worker ownership loss does not poll or reload',async()=>{
  const out=await x.controller.scan();
  assert.equal(out.items[0].state,'OWNERSHIP_LOST');
  assert.equal(x.signals.script,0);
+});
+test('task epoch changed during DOM readiness never reaches Web Companion',async()=>{
+ let adapterCalls=0;
+ const x=fixture({adapter:{submit:async()=>{adapterCalls++;}}});
+ const original=x.chromeAPI.scripting.executeScript;
+ x.chromeAPI.scripting.executeScript=async opts=>{
+   const proof=await original(opts);
+   x.run.slots[0].epoch=2;
+   return proof;
+ };
+ const out=await x.controller.control(x.req('SEND_INTENT'));
+ assert.equal(out.state,'STALE_LEASE_AFTER_READINESS');
+ assert.equal(out.accepted,false);
+ assert.equal(adapterCalls,0);
+ assert.equal(Object.keys(x.storage).filter(k=>k.includes('SendIntent')).length,0);
+ assert.equal(Object.keys(x.storage).filter(k=>k.includes('UnknownWorkerSend')).length,0);
+});
+test('durable unknown-send marker forbids close and reload even if task becomes idle',async()=>{
+ let adapterCalls=0;
+ const x=fixture({adapter:{submit:async()=>{adapterCalls++;throw Error('lost relay ack');}}});
+ const uncertain=await x.controller.control(x.req('SEND_INTENT'));
+ assert.equal(uncertain.state,'UNKNOWN_SEND_RECONCILIATION_REQUIRED');
+ assert.equal(adapterCalls,1);
+ const markers=Object.keys(x.storage).filter(k=>k.startsWith('hermesAutopilotUnknownWorkerSendV1_'));
+ assert.equal(markers.length,1);
+ assert.equal(x.storage[markers[0]].state,'UNKNOWN_SEND');
+ assert.equal(await x.controller.hasUnknownSend(RUN,'worker-1'),true);
+ x.run.slots[0].taskId=null;
+ x.run.slots[0].phase='IDLE';
+ x.run.slots[0].pendingSend=false;
+ const stop=await x.controller.control(x.req('CLOSE_IDLE'));
+ assert.equal(stop.state,'INCOMPLETE_TASK_PRESERVED');
+ assert.equal(x.signals.closes,0);
+ x.chromeAPI.scripting.executeScript=async()=>[{
+   frameId:0,documentId:DOC,
+   result:{schema:1,origin:'https://chatgpt.com',pathname:'/',
+     state:'COMPOSER_NOT_READY',editorEmpty:true,
+     hasAttachments:false,hasModeControl:true}
+ }];
+ for(let n=0;n<6;n++)await x.controller.scan();
+ assert.equal(x.signals.reloads,0,'unknown send must not be erased by reload');
+ const status=await x.controller.control(x.req('STATUS'));
+ assert.equal(status.sessions[0].sendReconciliationRequired,true);
+ assert(!JSON.stringify(status).includes('synthetic Hermes test prompt'));
+ const repeat=await x.controller.control(x.req('CLOSE_IDLE'));
+ assert.equal(repeat.accepted,false);
+});
+test('lost per-turn ledger write blocks adapter after worker marker readback',async()=>{
+ let adapterCalls=0;
+ const x=fixture({adapter:{submit:async()=>{adapterCalls++;}}});
+ const original=x.chromeAPI.storage.local.set;
+ x.chromeAPI.storage.local.set=async data=>{
+   if(Object.keys(data).some(k=>k.startsWith('hermesAutopilotSendIntentV1_')))
+     throw Error('simulated_storage_write_failed');
+   return original(data);
+ };
+ await assert.rejects(()=>x.controller.control(x.req('SEND_INTENT')),
+   /simulated_storage_write_failed/);
+ assert.equal(adapterCalls,0);
+ const markers=Object.keys(x.storage).filter(k=>k.startsWith('hermesAutopilotUnknownWorkerSendV1_'));
+ assert.equal(markers.length,1);
+ assert.equal(await x.controller.hasUnknownSend(RUN,'worker-1'),true);
+});
+test('repeated send request with different request ID is blocked across worker restart',async()=>{
+ let adapterCalls=0;
+ const x=fixture({adapter:{submit:async()=>{adapterCalls++;return {
+   schema:1,turnId:'invalid',trustedRelayLease:true
+ };}}});
+ const first=await x.controller.control(x.req('SEND_INTENT'));
+ assert.equal(first.state,'UNKNOWN_SEND_RECONCILIATION_REQUIRED');
+ const secondController=createSessionController({
+   chromeAPI:x.chromeAPI,readRun:async()=>x.run,
+   readOwned:async()=>x.owned,safeClose:async()=>{x.signals.closes++;return true;},
+   relayAdapter:{submit:async()=>{adapterCalls++;}},
+   clock:()=>100001,sleep:async()=>{}
+ });
+ const second=await secondController.control(x.req('SEND_INTENT',{
+   requestId:'request_different_9876543210123456'}));
+ assert.equal(second.state,'UNKNOWN_SEND_RECONCILIATION_REQUIRED');
+ assert.equal(adapterCalls,1);
+});
+test('conversation editor without verified Chat selection cannot hand off Send',async()=>{
+ let calls=0;
+ const x=fixture({adapter:{submit:async()=>{calls++;}}});
+ x.chromeAPI.scripting.executeScript=async()=>[{
+   frameId:0,documentId:DOC,result:{
+     schema:1,origin:'https://chatgpt.com',pathname:'/',
+     state:'READY',editorEmpty:true,hasAttachments:false,
+     hasModeControl:false,chatModeConfirmed:false
+   }
+ }];
+ const out=await x.controller.control(x.req('SEND_INTENT'));
+ assert.equal(out.state,'CHAT_NOT_READY_FOR_SEND');
+ assert.equal(out.sendPerformed,false);
+ assert.equal(calls,0);
+ assert.equal(Object.keys(x.storage).filter(k=>k.includes('UnknownWorkerSend')).length,0);
 });
 test('invalid roles and stale runs rejected without DOM interaction',async()=>{
  const x=fixture();

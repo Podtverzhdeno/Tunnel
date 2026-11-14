@@ -45,6 +45,14 @@
 
 - [x] A1. Code review follow-up: persist successful Work→Chat attempt counts and block new run when an old tab still resolves even if volatile ownership proof was lost; regression **27/27 PASS**, job `546acd52727749cdbb2e7e96f126b472`.
 
+- [x] A1. Add an exact known ChatGPT URL/path/hash gate and verify the route again after DOM readiness; reject Web Companion-owned Relay hash and cross-conversation navigation.
+- [x] A1. Block `/c/` composer without verified Chat mode before draft/Send; synthetic real Yandex binary proves rejection.
+- [x] A1. Recheck run/task/epoch after readiness and persist per-worker UNKNOWN_SEND before the per-turn fence and adapter call.
+- [x] A1. Block IDLE reload, CLOSE_IDLE and STOP cleanup when worker has an unreconciled UNKNOWN_SEND; redacted STATUS shows reconciliation flag.
+- [x] A1. Fault-injection regression: stale epoch, interrupted ledger write, worker restart and unknown send while task goes IDLE. **37/37 Node PASS**, job `63921660de7f4ebdb47a5e63b1ef222e`.
+- [x] A1. Run actual Yandex binary, synthetic-origin negative Chat-mode fixture: PASS, job `f4cfe90eb1014e3185808c59ed858819`, 0 Send. Do not count this as live E2E.
+- [ ] A2/A3. Add trusted, durable reconciliation that clears the worker marker only after independent Relay sender/response evidence, with a release test across Chrome MV3 restart; do not expose an unauthenticated override.
+
 ### Additional engineering tasks
 - [ ] AutoPilot-Web Companion compatibility matrix keyed by extension ID,
   manifest version, source SHA and owner documentId; refuse unknown versions.

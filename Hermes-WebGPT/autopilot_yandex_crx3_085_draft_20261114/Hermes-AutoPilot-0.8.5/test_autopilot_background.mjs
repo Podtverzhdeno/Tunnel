@@ -30,7 +30,7 @@ test('AutoPilot 0.8.5 respects three workers, drafts safely, reuses tabs, stops 
     modeChecks++;
     if(opts.func.name==='inspectChatComposer'){
       return [{frameId:0,documentId:DOC,result:{
-        schema:1,origin:'https://chatgpt.com',state:'READY',
+        schema:1,origin:'https://chatgpt.com',pathname:'/',state:'READY',
         editorEmpty:true,hasAttachments:false,
         chatModeConfirmed:true,hasModeControl:true}}];
     }

@@ -1,4 +1,4 @@
-/** Hermes AutoPilot SAFE_DEMO v0.6.0. No chat message send, DOM access, or tool execution. */
+/** Hermes AutoPilot 0.8.5 candidate. Bounded DOM readiness and drafts; Send remains disabled until signed Web Companion integration. */
 import {createRun,validatePlan,connectTab,schedule,ownerPause,resumeFromPause,ownerStop,ownerSetConcurrency,ownerApproveTask,ownerRecoverMissingTask,markTabMissing,releaseIdleMissingSlot,summarizeRun,watchdogScan,trustedLivenessScan,ownerAcknowledgeProgress,validateRunSnapshot} from './supervisor.mjs';
 import {analyzePlan,queueInsights,auditInsights,workerLimit,capacityAdvice} from './planning.mjs';
 import {probeCompanion} from './companion_probe.mjs';
@@ -31,6 +31,8 @@ const isChatTab=tab=>{
 };
 async function safeClose(runId,workerId,tabId){
  if(!Number.isInteger(tabId))return false;
+ // No tab closure when a send outcome is unknown even if the task has moved.
+ if(await sessions.hasUnknownSend(runId,workerId))return false;
  const owned=await readOwned();
  if(owned[String(tabId)]?.runId!==runId||owned[String(tabId)]?.workerId!==workerId)return false;
  // Bounded tab-URL settlement: do not leave an owned tab behind solely because
@@ -131,7 +133,8 @@ async function stop(){
  const next=ownerStop(run);await saveRun(next); // stop dispatch BEFORE external tab close
  const result=[];
  for(const slot of next.slots){
-  if(slot.taskId!==null||slot.pendingSend||slot.phase==='WORKING'){
+  if(slot.taskId!==null||slot.pendingSend||slot.phase==='WORKING'||
+     await sessions.hasUnknownSend(next.id,slot.id)){
     result.push({workerId:slot.id,closed:false,reason:'INCOMPLETE_TASK_PRESERVED'});
     continue;
    }
@@ -167,7 +170,8 @@ async function diagnostics(){
    else if(!meta.reachable)warnings.push(`${slot.id}:TAB_UNAVAILABLE`);
    else if(!meta.chatOrigin)warnings.push(`${slot.id}:TAB_NAVIGATED`);
   }
-  if(slot.pendingSend)warnings.push(`${slot.id}:SEND_RECONCILIATION_REQUIRED`);
+  if(slot.pendingSend||await sessions.hasUnknownSend(run.id,slot.id))
+   warnings.push(`${slot.id}:SEND_RECONCILIATION_REQUIRED`);
   if(slot.phase==='BLOCKED'||slot.phase==='MISSING_TAB')warnings.push(`${slot.id}:BLOCKED`);
   tabs.push(meta);
  }
@@ -307,7 +311,7 @@ async function ownerFillDraft({workerId,taskId,epoch}){
  if(draft.length>16000)throw Error('DRAFT_TOO_LONG');
   const ready=await sessions.inspect(workerId,{maxAttempts:8,timeoutMs:15000});
   if(ready.state!=='READY'||ready.editorEmpty!==true||ready.hasAttachments===true||
-     (ready.hasModeControl===true&&ready.chatModeConfirmed!==true))
+     ready.chatModeConfirmed!==true)
    return {status:'CHAT_EDITOR_NOT_READY',diagnostic:ready.state,
      submitted:false,mayRetryAfterManualCheck:true};
  const marker=JSON.stringify([run.id,workerId,taskId,epoch,slot.tabId]);
