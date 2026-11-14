@@ -446,11 +446,15 @@ $yandexHealth.Add_Click({
                 $status.Text='Статус AutoPilot неизвестен. Проверьте диагностику.'
             }
         }
+        $yandexResult.Text=$status.Text
     } catch {
         $status.Text='Не удалось проверить Яндекс. DEV запуск доступен.'
+        $yandexResult.Text=$status.Text
     }
 })
 $f.Controls.Add($yandexHealth)
+$yandexResult=L 'Результат проверки AutoPilot появится здесь.' 1017 55
+$yandexResult.ForeColor=[Drawing.Color]::DarkBlue
 if ($SmokeTest) {
     if ($f.Controls.Count -lt 15 -or -not $runReadonly.Enabled -or
         -not $save.Enabled -or -not $recover.Enabled -or
