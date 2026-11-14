@@ -14,6 +14,22 @@ A new local-only `v0.0.1-candidate` source archive contains all 24 required Pyth
 
 Detailed checks, pinned SHA256 and job receipts: `quickstart/a4/RUNTIME_REFRESH_20261114.md`. **Not** a clean-clone installer or ChatGPT Web/TG E2E acceptance.
 
+## Loaded Relay parity and guarded recovery
+
+`quickstart/a4/loaded_runtime_parity.py` checks the four Python source SHA256
+captured by the loaded Relay at startup against the current checkout; a green
+health port alone is not evidence of fresh code. The read-only status is
+exposed by the DEV diagnostics, WinForms GUI and `Start-Hermes-All.cmd`.
+
+`quickstart/a4/relay_reload_preflight.py` checks exact process ownership,
+terminal-only queue and Gateway idleness. `guarded_relay_reload.py --apply`
+is an optional explicit one-shot guarded reload but was **not** applied in
+this test cycle. UNKNOWN must never be retried without reconciliation.
+
+Actual Windows mismatch, safe recovery of offline Relay/Gateway and evidence:
+`quickstart/a4/RELAY_RUNTIME_PARITY_RECOVERY_20261114.md`.
+This is not ChatGPT/Telegram E2E acceptance.
+
 ## Candidate source files
 
 - `Setup-Hermes-A4.cmd` — double-click opens PowerShell 5.1 / WinForms UI for Windows 10/11.
