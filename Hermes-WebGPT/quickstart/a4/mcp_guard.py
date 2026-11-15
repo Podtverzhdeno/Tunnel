@@ -86,7 +86,8 @@ class Guard:
         # Do not permit backend-initiated sampling, roots, or other requests.
         if "method" in message:
             method = message.get("method")
-            return message if isinstance(method, str) and method.startswith("notifications/") else None
+            # Unsolicited backend notifications are not authorized by an agent request.
+            return None
         if "id" not in message:
             return None
         key = self._key(message["id"])
