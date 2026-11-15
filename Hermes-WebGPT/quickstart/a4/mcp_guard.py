@@ -63,6 +63,12 @@ class Guard:
                 self.pending_lists.add(self._key(message["id"]))
             return allowed, denial
         if method == "tools/call":
+            # A tool call must be an auditable JSON-RPC request, never a
+            # notification or a malformed ID. Otherwise full_access could
+            # execute a write with no correlated response or receipt.
+            request_id = message.get("id")
+            if type(request_id) not in (str, int):
+                return False, self.deny(message, "valid_request_id_required")
             params = message.get("params")
             if not isinstance(params, dict):
                 return False, self.deny(message)
