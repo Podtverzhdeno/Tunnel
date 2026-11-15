@@ -17,7 +17,7 @@ for line in sys.stdin:
             {"name":"read_file"},{"name":"write_file"},{"name":"run_command"}]}}
     elif method=="tools/call":
         with open(calls_path, "a", encoding="utf-8") as log:
-            log.write(x["params"]["name"] + "\\n")
+            log.write(x["params"]["name"] + "\n")
         y={"jsonrpc":"2.0","id":x.get("id"),"result":{"forwarded":x["params"]["name"]}}
     else:
         y={"jsonrpc":"2.0","id":x.get("id"),"result":{}}
