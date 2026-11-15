@@ -224,6 +224,9 @@ async function repairIdle(workerId){
   throw Error('WORKER_OUTSIDE_CONCURRENCY_LIMIT');
  if(slot.taskId!==null||!['MISSING_TAB','AWAITING_TAB'].includes(slot.phase))
   throw new Error('Нельзя автоматически восстанавливать вкладку с задачей');
+ // Repair never bypasses a durable unresolved send, even on an IDLE slot.
+ if(slot.pendingSend||await sessions.hasUnknownSend(run.id,workerId))
+  throw Error('UNKNOWN_SEND_RECONCILIATION_REQUIRED');
  const previousTabId=slot.phase==='MISSING_TAB'?slot.tabId:null;
  let next=run;
  if(slot.phase==='MISSING_TAB'){
