@@ -220,6 +220,8 @@ async function diagnostics(){
 async function repairIdle(workerId){
  const run=await readRun();if(!run||run.status!=='ACTIVE')throw new Error('Восстановление доступно только для активного запуска');
  const slot=run.slots.find(w=>w.id===workerId);if(!slot)throw new Error('Неверный слот');
+ if(run.slots.findIndex(w=>w.id===workerId)>=run.maxConcurrent)
+  throw Error('WORKER_OUTSIDE_CONCURRENCY_LIMIT');
  if(slot.taskId!==null||!['MISSING_TAB','AWAITING_TAB'].includes(slot.phase))
   throw new Error('Нельзя автоматически восстанавливать вкладку с задачей');
  const previousTabId=slot.phase==='MISSING_TAB'?slot.tabId:null;
