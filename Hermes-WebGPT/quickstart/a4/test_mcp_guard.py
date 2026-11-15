@@ -85,6 +85,32 @@ class GuardTests(unittest.TestCase):
         self.assertFalse(forward)
         self.assertEqual(response["error"]["message"], "permission_denied")
 
+    def test_write_notification_without_request_id_is_never_forwarded(self):
+        # A JSON-RPC notification cannot produce a correlated write receipt.
+        policy = Policy("full_access", self.policy.workspace_alias,
+                        self.policy.workspace_root, self.policy.scope)
+        guard = Guard(policy)
+        message = self.call("write_file", path="allowed/f.txt", content="test")
+        del message["id"]
+        forwarded, response = guard.request(message)
+        self.assertFalse(forwarded)
+        self.assertIsNone(response)
+        self.assertEqual(guard.pending_responses, set())
+
+    def test_malformed_request_ids_never_forward_writes(self):
+        policy = Policy("full_access", self.policy.workspace_alias,
+                        self.policy.workspace_root, self.policy.scope)
+        for bad_id in (None, True, [], {}, 1.25):
+            with self.subTest(bad_id=bad_id):
+                guard = Guard(policy)
+                message = self.call("write_file", path="allowed/f.txt", content="test")
+                message["id"] = bad_id
+                forwarded, response = guard.request(message)
+                self.assertFalse(forwarded)
+                self.assertEqual(response["error"]["message"],
+                                 "valid_request_id_required")
+                self.assertEqual(guard.pending_responses, set())
+
     def test_full_access_still_denies_unrestricted_execution(self):
         policy = Policy("full_access", self.policy.workspace_alias,
                         self.policy.workspace_root, self.policy.scope)
