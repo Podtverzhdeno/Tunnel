@@ -8,6 +8,7 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
 MOCK = r'''import json,sys
+calls_path = sys.argv[1]
 for line in sys.stdin:
     x=json.loads(line)
     method=x.get("method")
@@ -15,7 +16,9 @@ for line in sys.stdin:
         y={"jsonrpc":"2.0","id":x["id"],"result":{"tools":[
             {"name":"read_file"},{"name":"write_file"},{"name":"run_command"}]}}
     elif method=="tools/call":
-        y={"jsonrpc":"2.0","id":x["id"],"result":{"forwarded":x["params"]["name"]}}
+        with open(calls_path, "a", encoding="utf-8") as log:
+            log.write(x["params"]["name"] + "\\n")
+        y={"jsonrpc":"2.0","id":x.get("id"),"result":{"forwarded":x["params"]["name"]}}
     else:
         y={"jsonrpc":"2.0","id":x.get("id"),"result":{}}
     sys.stdout.write(json.dumps(y)+"\n")
@@ -24,22 +27,27 @@ for line in sys.stdin:
 
 
 class StdioIntegrationTests(unittest.TestCase):
-    def run_guard(self, mode, requests):
+    def run_guard(self, mode, requests, capture_calls=False):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "allowed").mkdir()
             mock = root / "mock_backend.py"
             mock.write_text(MOCK, encoding="utf-8")
+            calls_file = root / "forwarded-calls.txt"
             command = [sys.executable, "-m", "quickstart.a4.mcp_guard",
                        "--mode", mode, "--workspace", "projects",
                        "--root", str(root), "--scope", str(root / "allowed"),
-                       "--", sys.executable, str(mock)]
+                       "--", sys.executable, str(mock), str(calls_file)]
             proc = subprocess.run(command, cwd=PROJECT,
                                   input="\n".join(json.dumps(x) for x in requests) + "\n",
                                   capture_output=True, encoding="utf-8",
                                   timeout=15)
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            return [json.loads(line) for line in proc.stdout.splitlines() if line]
+            replies = [json.loads(line) for line in proc.stdout.splitlines() if line]
+            if capture_calls:
+                calls = calls_file.read_text(encoding="utf-8").splitlines() if calls_file.exists() else []
+                return replies, calls
+            return replies
 
     def test_read_only_filters_and_blocks_real_backend_calls(self):
         requests = [
@@ -57,6 +65,17 @@ class StdioIntegrationTests(unittest.TestCase):
         self.assertEqual(messages[2]["error"]["code"], -32003)
         self.assertEqual(messages[3]["result"]["forwarded"], "read_file")
         self.assertNotIn("SECRET-DO-NOT-LOG", json.dumps(output))
+
+    def test_write_notification_never_reaches_backend(self):
+        # In full_access a valid correlated write is allowed, but a notification
+        # lacking an ID must be dropped before the actual backend process.
+        no_id_write = {"jsonrpc": "2.0", "method": "tools/call",
+                       "params": {"name": "write_file", "arguments": {
+                           "workspace": "projects", "path": "allowed/f", "content": "test"}}}
+        replies, forwarded = self.run_guard("full_access", [no_id_write],
+                                            capture_calls=True)
+        self.assertEqual(replies, [])
+        self.assertEqual(forwarded, [])
 
     def test_scoped_write_reaches_backend_only_in_full_mode(self):
         item = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
