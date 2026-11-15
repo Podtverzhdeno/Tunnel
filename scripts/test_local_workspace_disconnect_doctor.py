@@ -16,10 +16,16 @@ class Response:
     def __enter__(self):return self
     def __exit__(self,*args):return False
     def read(self,size):return self.data[:size]
+class TextResponse:
+    def __init__(self,text):self.data=text.encode('utf8')
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def read(self,size):return self.data[:size]
 class Opener:
     def __init__(self,response):self.response=response;self.calls=[]
     def open(self,request,timeout):
         self.calls.append((request.full_url,timeout))
+        if isinstance(self.response,str):return TextResponse(self.response)
         return Response(self.response)
 
 class Tests(unittest.TestCase):
@@ -52,6 +58,12 @@ class Tests(unittest.TestCase):
         report=mod.probe(8765,'/healthz',opener)
         self.assertEqual(report['status'],'ready')
         self.assertEqual(opener.calls, [('http://127.0.0.1:8765/healthz',2.0)])
+    def test_plaintext_readyz_supported_without_leaking_content(self):
+        self.assertEqual(mod.probe(8080,'/readyz',Opener('ready\n')),
+                         {'http_result':'responded','status':'ready'})
+    def test_unknown_plaintext_response_suppressed(self):
+        self.assertEqual(mod.probe(8765,'/healthz',Opener('token SECRET')),
+                         {'http_result':'not_json'})
     def test_reject_external_host_via_invalid_path(self):
         with self.assertRaises(ValueError):mod.probe(8765,'http://example.com')
     def test_dns_returns_only_boolean(self):
