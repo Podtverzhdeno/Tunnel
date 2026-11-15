@@ -1,0 +1,31 @@
+name: Hermes AutoPilot source and Node regression
+
+on:
+  push:
+    branches:
+      - feat/hermes-autopilot-stable-sessions-20261114
+    paths:
+      - 'Hermes-WebGPT/autopilot_yandex_crx3_085_draft_20261114/**'
+      - '.github/workflows/hermes-autopilot-node.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  autopilot-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: Hermes-WebGPT/autopilot_yandex_crx3_085_draft_20261114/Hermes-AutoPilot-0.8.5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript module syntax
+        run: |
+          for file in *.js *.mjs; do node --check "$file"; done
+      - name: Check module graph and run regression tests
+        run: node --test test_*.mjs
