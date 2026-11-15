@@ -51,6 +51,13 @@ test('lost IDLE repair tab-create ACK cannot create a duplicate',async()=>{
   await send('STATUS'); // serializes after onRemoved through background's lock
   const marked=db.hermesAutopilotRunV2.slots.find(s=>s.id===idle.id);
   assert.equal(marked.phase,'MISSING_TAB');
+  const markerKey='hermesAutopilotUnknownWorkerSendV1_'+run.id+'_'+idle.id;
+  db[markerKey]={schema:1,state:'UNKNOWN_SEND'};
+  const denied=await send('REPAIR_IDLE',{workerId:idle.id});
+  assert.equal(denied.ok,false);
+  assert.match(denied.error,/UNKNOWN_SEND_RECONCILIATION_REQUIRED/);
+  assert.equal(created,3,'unknown send never opens a replacement tab');
+  delete db[markerKey];
   failCreateAck=true;
   const first=await send('REPAIR_IDLE',{workerId:idle.id});
   assert.equal(first.ok,false,'lost ACK cannot be treated as success');
