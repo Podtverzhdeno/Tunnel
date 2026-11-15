@@ -222,6 +222,7 @@ async function repairIdle(workerId){
  const slot=run.slots.find(w=>w.id===workerId);if(!slot)throw new Error('Неверный слот');
  if(slot.taskId!==null||!['MISSING_TAB','AWAITING_TAB'].includes(slot.phase))
   throw new Error('Нельзя автоматически восстанавливать вкладку с задачей');
+ const previousTabId=slot.phase==='MISSING_TAB'?slot.tabId:null;
  let next=run;
  if(slot.phase==='MISSING_TAB'){
   // Even without ownership proof, never open a potential duplicate while old tab exists.
@@ -236,8 +237,22 @@ async function repairIdle(workerId){
  // To avoid accidental five-tab relaunch, this is restricted to a single slot.
  const target=next.slots.find(w=>w.id===workerId);
  if(target.phase!=='AWAITING_TAB'||target.tabId!==null)throw new Error('Слот не готов к восстановлению');
+ // A lost chrome.tabs.create acknowledgement may mean the tab exists.
+ // Persist the one-shot intent BEFORE creation, including on explicit repair.
+ // A different old tab ID yields a distinct repair generation.
+ const key=previousTabId===null ? TAB_CREATE_PREFIX+run.id+'_'+workerId :
+   'hermesAutopilotRepairCreateIntentV1_'+run.id+'_'+workerId+'_'+previousTabId;
+ if((await chrome.storage.local.get(key))[key]!==undefined)
+   throw Error('TAB_CREATE_UNKNOWN_RECONCILIATION_REQUIRED');
+ const marker={schema:1,state:'UNKNOWN_CREATE',runId:run.id,workerId,
+   previousTabId,attemptId:crypto.randomUUID(),createdAt:Date.now()};
+ await chrome.storage.local.set({[key]:marker});
+ const proof=(await chrome.storage.local.get(key))[key];
+ if(proof?.state!=='UNKNOWN_CREATE'||proof.attemptId!==marker.attemptId)
+   throw Error('TAB_CREATE_INTENT_UNCONFIRMED');
  const tab=await chrome.tabs.create({url:CHAT_URL,active:false});
  next=connectTab(next,workerId,tab.id);await saveRun(next);await addOwned(next.id,workerId,tab.id);
+ await chrome.storage.local.set({[key]:{...marker,state:'BOUND',tabId:tab.id}});
  const scheduled=schedule(next);await saveRun(scheduled.run);
  return {workerId,tabId:tab.id,summary:summarizeRun(scheduled.run),assignments:scheduled.assignments,
   messagingEnabled:false};
