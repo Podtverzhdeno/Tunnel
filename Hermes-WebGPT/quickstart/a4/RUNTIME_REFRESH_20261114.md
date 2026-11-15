@@ -1,0 +1,43 @@
+# A4 — refresh текущего офлайн-пакета Hermes, 14.11.2026
+
+## Исходный дефект
+
+Ранее подготовленный `projects/.hermes-a4-runtime-v0.0.0-candidate.zip` имел валидный манифест и успешно распаковывался в изолированную папку (Local Workspace job `9849d606bbdb4181882c7a730abf88bf`, rc 0), но **не совпадал с актуальными исходниками**. Пакет содержал старые версии `relay.py` и `start_bridge.py`.
+
+## Изменение
+
+- Добавлены `quickstart/a4/verify_real_offline_stage.py` и `refresh_runtime_candidate.py` для проверки настоящего локального архива, сравнения с текущей версией и явно разрешённой пересборки кандидата.
+- Создан **новый локальный** архив `projects/.hermes-a4-runtime-v0.0.1-candidate.zip` (сборка только 24 исходных Python-модулей по закрытому allowlist; никаких файлов из профиля браузера, Telegram, API-ключей и журналов).
+- Новый архив был проверен собственной SHA256-проверкой и **реально распакован через RuntimeStager в отдельный временный каталог**, перепроверен на уровне всех 24 файлов. Ни одна рабочая служба или активная версия не переключалась.
+
+## Проверенные артефакты
+
+- **Архив:** `17347bcb9d14ff9aa30a24328eb2d629c6d355047d49d89bac5590be512975fa` (SHA256).
+- **Manifest:** `e61a3a2adef27a33736045a1c8ffbde8f9560ace9261d1d1a2291e8ba761ec8f` (SHA256).
+- **Изменилось модулей:** 2 (`relay.py`, `start_bridge.py`).
+- Реальный изолированный stage: `LOCAL_CANDIDATE_STAGED_VERIFIED`, 24 файла, `published=false`, `active_runtime_switched=false`, job `eb27a60cc0074ea4887092ac8e37bbd1`, rc 0.
+- Проверка без записи: `READY_TO_BUILD`, job `9b9a7cc0ce4f4f83bb26460b88bb6410`, rc 0.
+- `test_refresh_runtime_candidate.py`: **4/4 PASS**, job `dcab016dbbca4b19a127c1c2a4ce8d99`, rc 0; проверены запрет перезаписи, только явная сборка, отказ при SHA drift и корректные метки «не установлен».
+- Общая Windows Quickstart регрессия: **234 теста, 224 PASS / 10 SKIP / 0 FAIL**, job `b8c597bf27e74c1a970d7ec4e3d763c9`, rc 0.
+
+## Ограничения / следующий шаг
+
+- Этот архив — **локальный кандидат с 24 модулями**, не подписанный установщик со всеми сервисами. Не опубликован в GitHub и не поставлен на активный ПК.
+- Полная установка с нуля ещё требует отдельный комплект Local Workspace MCP, Tunnel, Telegram, Relay, Web Companion и реальный Chrome/Yandex UI/E2E.
+- Для приёмки нужны реальный Messenger → Web Companion → ChatGPT → Messenger текстовый круг, 3 потока и файлы/изображения.
+- Блокер A1/A3 сохраняется: `SEND_INTENT` не имеет доверенного `relayAdapter`; публичного настоящего Web Companion Send API пока нет. Не допускать двойной отправки на существующей очереди.
+
+**Вклад A4:** актуальный переносимый исходный пакет сборки *проверен локально*, с нулевым влиянием на действующий Hermes; это шаг к clean-clone, но не финальная установка.
+
+## Исполняемый офлайн-smoke — дополнительная проверка
+
+- `verify_staged_relay_help.py` фактически импортировал исходники Relay из новой ZIP-версии и выполнил `relay.py --help` со штатным кодом 0, без запуска служб или сетевых обращений, архивные файлы не изменились. Job `5e128524466048b897001e38b437661d`, rc0.
+- `verify_staged_relay_live.py` **реально поднял отдельный Relay** из того же архива с новой временной SQLite-базой, временным токеном и случайным локальным портом. Сетевые запросы к `/health` и авторизованному `/bridge/status` прошли; `max_active_requests=3`, `active_requests=0`, `active_http_waiters=0`. Тестовый процесс корректно остановлен и временная папка удалена. Job `1f55846ccb44494d8847cf4eee416da6`, exit 0.
+- Это **не** 3 настоящих браузерных ответа, не Telegram E2E и не выпуск релиза. Рабочий порт 18765 не затронут; никаких POST в очередь не отправлялось.
+
+## Конкурентный HTTP E2E в изолированном Relay (синтетика)
+
+- `verify_staged_relay_three_synthetic.py` стартовал **тот же упакованный Relay** в отдельном временном процессе на случайном локальном порту с пустой SQLite-базой. Три параллельных HTTP-запроса `POST /v1/chat/completions` прошли через оригинальный протокол `/bridge/claim`, `/bridge/event`: `intent → saved → result` для каждого. Все три вернули ожидаемый **синтетический** ответ, и `active_requests` вернулся к 0.
+- Результат: `PASS`, `synthetic_http_roundtrips=3`, `three_concurrent_claims_verified=true`, `all_synthetic_responses_completed=true`, `actual_browser_workers_used=false`; job `7d3c1074511e423781dcf4724095e741`, exit 0.
+- После изолированного теста повторно проверен **реальный** `Start-Hermes-All.cmd` на ПК: `PASS`, `service_and_receipt_identity_unchanged=true`, `web_companion_bridge_authenticated=true`, `autopilot_send_unverified_warning=true`, без отправок и загрузок; job `de07000f412440cbb9c6bdfacda78321`, exit 0.
+- **Принципиальное ограничение:** браузерных работников и ответов ChatGPT в тесте не было, поэтому это доказывает backend-конкурентность, а не Telegram ↔ ChatGPT E2E. Действующие очереди и разрешения не менялись.
