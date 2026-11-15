@@ -70,6 +70,14 @@ def probe(port, path, opener=None):
             try:
                 return evaluate_payload(json.loads(raw))
             except (ValueError, UnicodeError):
+                # Some versions return a one-word text/plain health status.
+                # Accept only well-known fixed words; never echo raw content.
+                try:
+                    word = raw.decode("ascii").strip().lower()
+                except UnicodeError:
+                    word = ""
+                if word in ("ok", "ready", "healthy"):
+                    return {"http_result": "responded", "status": word}
                 return {"http_result": "not_json"}
     except HTTPError as error:
         return {"http_result": "http_error", "http_status": error.code}
