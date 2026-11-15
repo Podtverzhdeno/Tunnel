@@ -7,7 +7,6 @@ import {previewTurnBinding} from './handoff_contract.mjs';
 import {insertChatDraft} from './draft_dom.mjs';
 import {ensureChatReady} from './browser_ready.mjs';
 import {createSessionController} from './session_control_v1.mjs';
-import {probeWebCompanionExtension} from './companion_external_probe.mjs';
 const RUN_KEY='hermesAutopilotRunV2';
 const OWNED_KEY='hermesAutopilotOwnedTabsV2';
 const DRAFT_KEY='hermesAutopilotDraftFencesV1';
@@ -22,8 +21,9 @@ const saveRun=async run=>{validateRunSnapshot(run);return chrome.storage.local.s
 const readOwned=async()=> (await chrome.storage.session.get(OWNED_KEY))[OWNED_KEY]??{};
 async function addOwned(runId,workerId,tabId){const owned=await readOwned();owned[String(tabId)]={runId,workerId};await chrome.storage.session.set({[OWNED_KEY]:owned});}
 async function removeOwned(tabId){const owned=await readOwned();delete owned[String(tabId)];await chrome.storage.session.set({[OWNED_KEY]:owned});}
-const sessions=createSessionController({chromeAPI:chrome,readRun,readOwned,safeClose,
-  probeCompanion:()=>probeWebCompanionExtension({runtime:chrome.runtime})});
+// The controller accepts no external probe dependency; do not import a missing
+// module here: an unresolved static import prevents the MV3 worker from loading.
+const sessions=createSessionController({chromeAPI:chrome,readRun,readOwned,safeClose});
 const isChatURL=value=>{
  try{
   if(typeof value!=='string'||!value)return false;
