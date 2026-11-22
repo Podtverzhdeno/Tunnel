@@ -35,7 +35,7 @@ PR #10 и #11 оба изменяют `background.js`, `background_content.js`, 
 5. `source_pair_verified`/exit 0 относится только к файлам, `blocked`/exit 2 — нарушение security contract или зеркало, `evidence_unknown`/exit 3 — неполное чтение. Fail-closed: отсутствие файлов не равно OK;
 6. атомарно заменяет только разрешённый отчёт `mirror-report.json` или `webgpt-mirror-report.json` внутри checkout, запрещает symlink, выход за корень, запись в папки browser/secret и fsync'ит файл (не делает вид, что транзакционно подтверждает внешний Send); никогда не создаёт новую заявку и не даёт права на retry.
 
-`test_extension_mirror_guard.py` проверяет 40 сценариев на синтетических данных: mismatch по JS и manifest, более широкие разрешения/хосты, неверный MV3, missing path, symlink file/parent, oversize, приватный config, отсутствие ложного runtime proof, корректность JSON и выходов. Офлайн-результат 40/40 PASS в изолированном Python, не E2E.
+`test_extension_mirror_guard.py` проверяет 45 сценариев на синтетических данных: mismatch по JS и manifest, более широкие разрешения/хосты, неверный MV3, missing path, symlink file/parent, oversize, приватный config, отсутствие ложного runtime proof, корректность JSON и выходов. Офлайн-результат 45/45 PASS в изолированном Python, не E2E.
 
 `.github/workflows/hermes-webgpt-mirror-integrity.yml` запускает эти проверки при PR/push main и дважды в день **только после появления workflow в main**. Не считать GitHub Actions заменой проверки живого расширения. Отчёт — локальная безопасная проекция evidence, не криптографическая подпись владельца.
 
@@ -163,7 +163,7 @@ OpenTelemetry GenAI Semantic Conventions плюс Weaver validator — **кан�
 4. Тестировать MV3 stop/restart, потерю ACK после click, аккаунт/вкладку и независимый Telegram receipt.
 5. Только после этого — проверку event schema, p95, нагрузку 10/30/50 логических агентов и поэтапный supervised rollout.
 
-Ни 40 mirror-тестов, ни этот SQLite source audit **не подтверждают** состояние текущей Windows-инсталляции, отправку ChatGPT или доставку Telegram. Уровень доказательства: `SOURCE_VERIFIED/CI_VERIFIED`; `RUNTIME/USER_EFFECT_UNKNOWN`.
+Ни 45 mirror-тестов, ни этот SQLite source audit **не подтверждают** состояние текущей Windows-инсталляции, отправку ChatGPT или доставку Telegram. Уровень доказательства: `SOURCE_VERIFIED/CI_VERIFIED`; `RUNTIME/USER_EFFECT_UNKNOWN`.
 
 
 ## 8. Критический proof gap: почему простой reorder \`send_clicked\` не исправляет атомарность
@@ -222,3 +222,14 @@ OpenTelemetry GenAI Semantic Conventions плюс Weaver validator — **кан�
 5. Для backward compatibility legacy clients сохраняется отдельное поле `trust=legacy_unverified`: они могут передавать диагностический heartbeat, но не создают trusted provenance и не разрешают мутирующие операции. Canary миграция должна обеспечивать неутечку private profile data.
 
 **Тесты происхождения:** одновременные агенты A/B с общим историческим ключом и разными job scopes; ответ event B к job A должен быть отвергнут новыми capability rules; duplicate UUID same payload → один durable event; duplicate UUID changed payload → security incident; out-of-order `producer_seq` → trace_gap; reboot sender без new boot id → stale; expired approval/fence → rejection. Это **предложение безопасной будущей миграции**, не утверждение, что текущая реализация уже защищена такими механизмами.
+
+
+## 11. Устанавливаемая упаковка и merge queue для десятков разработчиков
+
+После строгой проверки семи зеркальных файлов обнаружен ещё один класс риска: в папку `web-extension/` могли добавить **восьмой исполняемый файл/ресурс**, который не попал бы в hash-compare. На main там ровно семь публичных файлов. Гейт теперь не только сравнивает содержимое, но и требует, чтобы **весь список элементов установочного каталога** ограничивался утверждёнными семью файлами. Единственное допустимое исключение — локальный `bridge-config.json`, который не открывается и не сериализуется в отчёт; symlink под этим именем отвергается. Неизвестные дополнительные JS, HTML, JSON, подкаталоги или ссылки → `INSTALLATION_PACKAGE_FILESET_CHANGED` и fail-closed. Существующие утверждённые JS всё равно нуждаются в полноценном code review — mirror hash сам по себе не доказывает безопасность кода.
+
+Добавлены четыре synthetic fixture: лишний `.js`, лишняя директория, разрешённый но непрочитанный private config, symlink private config. В совокупности **45 офлайн-тестов**. Перед релизом отдельно сравнить файлы реально установленного распакованного расширения и build artifact; скан репозитория не знает, что было загружено в Chrome.
+
+CI GitHub Actions теперь поддерживает `merge_group: checks_requested` помимо PR, а также ограничение параллельных устаревших workflow runs при частых pushes множества агентов. GitHub рекомендует отдельный merge_group trigger при required checks в merge queue; иначе merge queue не получает требуемые статусы. Отключение старой CI-ревизии оставляет её `cancelled/stale`, а **не** `passed`. Запуск `schedule` работает только если workflow уже доступен в default branch. Источник: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group
+
+Проверка новой CI-матрицы: Windows/Ubuntu × Python 3.11/3.13, все четыре job должны подтвердить 45 тестов и исходный seven-file gate на фактическом проверяемом merge SHA; до публикации журнала последнего SHA не объявлять этот статус достигнутым.
