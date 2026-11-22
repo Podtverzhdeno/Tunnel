@@ -1,0 +1,23 @@
+name: Hermes extension safety regression
+
+on:
+  pull_request:
+    paths:
+      - "chat-launch-smoke-desktop-test/web-extension/background.js"
+      - "chat-launch-smoke-desktop-test/web-companion/test_lifecycle_guards.js"
+      - ".github/workflows/hermes-extension-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check real extension syntax
+        run: node --check chat-launch-smoke-desktop-test/web-extension/background.js
+      - name: Test lifecycle and recovery guards (no browser, no network)
+        run: node --test chat-launch-smoke-desktop-test/web-companion/test_lifecycle_guards.js

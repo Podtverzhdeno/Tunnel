@@ -20,6 +20,35 @@ const CAP=25;
 const CLAIMS_PER_POLL=4;
 const UI_COOLDOWN_MS=90000;
 const MAX_UI_PROBE_FAILURES=2;
+// Performance guard: orphan/ownership recovery scans are expensive on large
+// profiles. Browser restarts clear storage.session, so a fresh scan runs then.
+const RECOVERY_SCAN_INTERVAL_MS=120000;
+const RECOVERY_SCAN_AT="chatSmokeRecoveryScanAt";
+
+// Chrome closes a window when its final tab is removed. Do not let completion
+// cleanup accidentally terminate the user's only browser window.
+// This is a best-effort check: tabs may close concurrently after the query.
+async function hasAnotherTabInWindow(tabId){
+  if(!Number.isInteger(tabId)||tabId<0)return false;
+  try{
+    const tab=await chrome.tabs.get(tabId);
+    if(!tab||!Number.isInteger(tab.windowId))return false;
+    const siblings=await chrome.tabs.query({windowId:tab.windowId});
+    return Array.isArray(siblings)&&siblings.some(t=>
+      Number.isInteger(t?.id)&&t.id!==tabId);
+  }catch(_){return false;}
+}
+
+async function recoverOrphansIfDue(){
+  const now=Date.now();
+  // A missing/cleared session state intentionally performs a fresh scan.
+  const saved=await chrome.storage.session.get(RECOVERY_SCAN_AT);
+  const previous=saved?.[RECOVERY_SCAN_AT];
+  if(Number.isFinite(previous)&&previous<=now&&
+     now-previous<RECOVERY_SCAN_INTERVAL_MS)return;
+  await recoverOrphanedTabs();
+  await chrome.storage.session.set({[RECOVERY_SCAN_AT]:Date.now()});
+}
 let runningPoll=null;
 let circuitMutation=Promise.resolve();
 // Serialize state transitions across concurrent completion callbacks.
@@ -404,7 +433,7 @@ async function finish(job,status,url="",responseText="",options={}){
           (job.completionMode?
             canonicalChatUrl(tab.url)===canonicalChatUrl(job.savedUrl):
             tab.url.startsWith("https://chatgpt.com/"));
-        if(eligible){
+        if(eligible && await hasAnotherTabInWindow(job.tabId)){
           await chrome.tabs.remove(job.tabId);
           closed=true;
           await telemetry(job,"tab_closed");
@@ -442,6 +471,10 @@ async function retryAcceptedClosure(task){
     // Chrome may emit tabs.onRemoved *before* tabs.remove resolves. Mark this
     // intentional close durably in session first, just like finish() does.
     // Otherwise onRemoved mislabels a verified DONE as unexpected_close.
+    if(!await hasAnotherTabInWindow(task.tabId)){
+      await telemetry(task,"tab_close_skipped");
+      return;
+    }
     await putTask({...task,finishing:true});
     await chrome.tabs.remove(task.tabId);
     await telemetry(task,"tab_closed");
@@ -483,7 +516,7 @@ async function dispatch(job,windowId){
 async function poll(){
   if(runningPoll)return runningPoll;
   runningPoll=(async()=>{
-    try{await recoverOrphanedTabs();}
+    try{await recoverOrphansIfDue();}
     catch(e){console.warn("Task recovery unavailable:",String(e));}
     const current=await listActive();
     for(const task of current){
