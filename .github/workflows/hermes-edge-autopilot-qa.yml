@@ -52,7 +52,7 @@ jobs:
       - name: Require source/build mirror equality
         shell: pwsh
         run: |
-          $pairs = @('background.js','popup.js','popup.html')
+          $pairs = @('background.js','background_content.js','popup.js','popup.html')
           foreach ($p in $pairs) {
             $a = (Get-FileHash -Algorithm SHA256 "chat-launch-smoke-desktop-test/web-companion/$p").Hash
             $b = (Get-FileHash -Algorithm SHA256 "chat-launch-smoke-desktop-test/web-extension/$p").Hash
