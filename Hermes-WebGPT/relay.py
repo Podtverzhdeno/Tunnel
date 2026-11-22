@@ -712,6 +712,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.error(503,'relay_shutting_down')
         waiter_registered=False
         abandoned=False
+        stream_headers_sent=False
         try:
             length=int(self.headers.get('Content-Length','0'))
             if length<=0 or length>MAX_BODY:raise RelayError('invalid_body_size')
@@ -780,6 +781,7 @@ class Handler(BaseHTTPRequestHandler):
             streaming=body.get('stream') is True
             if streaming:
                 self.send_response(200);self.send_header('Content-Type','text/event-stream');self.send_header('Cache-Control','no-store');self.end_headers()
+                stream_headers_sent=True
             while True:
                 if self.server._closing.is_set():
                     # Cooperative drain precedes Queue.close(), including
@@ -841,7 +843,15 @@ class Handler(BaseHTTPRequestHandler):
                         str(exc)=='relay_shutting_down' else
                         429 if isinstance(exc,RelayError) and
                         str(exc) in ('http_waiter_capacity','turn_waiter_capacity') else 400)
-                self.error(status,str(exc) if isinstance(exc,RelayError) else 'invalid_request')
+                code=str(exc) if isinstance(exc,RelayError) else 'invalid_request'
+                if stream_headers_sent:
+                    # HTTP 200 / SSE headers are already irrevocable. Sending
+                    # another HTTP status line would corrupt the event stream.
+                    self.wfile.write(('data: '+compact({'error':{
+                        'message':code,'type':'relay_error','code':code}})+'\n\n').encode())
+                    self.wfile.flush()
+                else:
+                    self.error(status,code)
             except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
                 abandoned=True
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
