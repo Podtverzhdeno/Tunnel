@@ -65,7 +65,7 @@ class WaiterBudgetTests(unittest.TestCase):
             for i in range(2)
         ]
         third = "turn-id-fixture-0003"
-        self.server.submit_and_attach(request(), turn_id="turn-id-fixture-0002")
+        self.server.submit_and_attach(request(), turn_id="turn-id-fixture-0001")
         self.assertEqual(self.server.active_waiter_count(), 3)
         with self.assertRaisesRegex(relay.RelayError, "http_waiter_capacity"):
             self.server.submit_and_attach(request("different"), turn_id=third)
