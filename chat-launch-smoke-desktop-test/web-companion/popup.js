@@ -2,11 +2,14 @@
 const state=document.getElementById("state");
 const circuit=document.getElementById("circuit");
 const resume=document.getElementById("resume");
+const resourceProfile=document.getElementById("resource-profile");
+const resourceStatus=document.getElementById("resource-status");
 Promise.all([
-  chrome.storage.local.get(["chatSmokeLast","chatSmokeAuthPaused"]),
+  chrome.storage.local.get(["chatSmokeLast","chatSmokeAuthPaused","chatSmokeEnergyProfile"]),
   chrome.storage.session.get("chatSmokeCircuit")
 ]).then(([last,active])=>{
   const v=last.chatSmokeLast;
+  resourceProfile.value=last.chatSmokeEnergyProfile==="max_parallel"?"max_parallel":"balanced";
   const date=typeof v?.updatedAt==="number"?
     new Date(v.updatedAt).toLocaleString():"";
   state.textContent=v?
@@ -37,5 +40,18 @@ resume.addEventListener("click",async()=>{
       "Очередь возобновлена вручную.":"Возобновление не подтверждено.";
   }catch(_){
     circuit.textContent="Ошибка связи с фоновым обработчиком.";
+  }
+});
+resourceProfile.addEventListener("change",async()=>{
+  const chosen=resourceProfile.value;
+  if(chosen!=="balanced"&&chosen!=="max_parallel")return;
+  resourceProfile.disabled=true;
+  try{
+    await chrome.storage.local.set({chatSmokeEnergyProfile:chosen});
+    resourceStatus.textContent="Режим сохранён. Новый лимит применяется к следующим заданиям; текущие вкладки не прерываются.";
+  }catch(_){
+    resourceStatus.textContent="Не удалось сохранить режим. Проверьте расширение и повторите.";
+  }finally{
+    resourceProfile.disabled=false;
   }
 });
