@@ -63,6 +63,14 @@ Never model `logical_agent == persistent_hydrated_tab`. Serial descendants can r
 State machine for one job:
 `QUEUED -> CLAIMED -> TAB_OWNED -> SEND_INTENT -> SENT_OBSERVED -> REPORT_PENDING -> REPORT_ACKED -> DONE -> TAB_RELEASED`. Nonterminal branches `UNKNOWN_SEND`, `AUTH_MISMATCH`, `BINDING_DISPUTED`, `USER_CANCELLED` cannot automatically transition back to `QUEUED`. A timeout is not proof of non-delivery. The local report file is not independent proof of its writer's identity; the P085 host attestation requirement remains open.
 
+### 3.1. Continuous Chain3 is not the same as 25 permanently running tabs
+
+`chain3_continuous.py` already has independent, stricter protections. Its config validator requires `max_active <= 10`, `max_queued <= 4`, `min_claim_interval_seconds >= 60`, and `max_claims_per_utc_day <= 60`. A successor is gated by accepted prior report, immutable handoff and separately owner-armed campaign. These checks must not be removed to "speed up the infinite autopilot." The browser's 25-tab ceiling is a **different** protection; neither ceiling proves that 25 autonomous successors are simultaneously scheduled.
+
+Its `ready()` walks completed generations from generation zero and revalidates predecessor artifacts, which can make each later refill increasingly expensive as an unbounded chain grows. This is a long-horizon algorithmic performance concern, not evidence that it currently dominates CPU. A future optimization could maintain a **protected, verifiable per-lane checkpoint** with exact accepted predecessor digests, and fall back to complete revalidation on conflict. Never trust an agent-authored cursor as authorization for a successor.
+
+At review time the Chain3 CLI exposes `preview/arm/request/mode/select-mode`, not a dedicated owner-authenticated `disarm` command. The broader admission-hold mechanism exists; however an explicit **host-authorized STOP/Pause/Resume control** with durable audit and revocation semantics should be specified and tested before any unattended endurance mode. An agent-writable JSON "stop" file is not an independent authority boundary.
+
 ## 4. Microsoft Edge: minimal operational profile, **not a stripped security browser**
 
 Recommended: **separate** `%LOCALAPPDATA%\HermesEdgeWorker` user-data-dir, not personal Edge profile, and only one loaded unpacked Web Companion extension. Run:
