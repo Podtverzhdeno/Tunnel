@@ -1,0 +1,211 @@
+"""Offline tests. No actual browser, credentials, APIs or Windows dependencies."""
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+MODULE = Path(__file__).with_name("extension_mirror_guard.py")
+spec = importlib.util.spec_from_file_location("extension_mirror_guard", MODULE)
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+SHA = "a" * 40
+
+
+def manifest():
+    return {"manifest_version": 3, "version": "0.6.6", "name": "Test Extension",
+            "background": {"service_worker": "background.js"},
+            "permissions": list(g.PERMS),
+            "host_permissions": list(g.HOSTS),
+            "content_scripts": [{"matches": ["https://chatgpt.com/*"],
+                                 "js": list(g.SCRIPTS), "run_at": "document_idle"}]}
+
+
+class MirrorGateTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.src = self.root / g.SOURCE
+        self.mirror = self.root / g.COPY
+        self.src.mkdir(parents=True)
+        self.mirror.mkdir()
+        for name in g.PAIR:
+            data = (json.dumps(manifest()).encode() if name == "manifest.json"
+                    else ("// synthetic public extension file " + name).encode())
+            (self.src/name).write_bytes(data)
+            (self.mirror/name).write_bytes(data)
+
+    def test_all_seven_files_match(self):
+        r = g.inspect(self.root, SHA)
+        self.assertEqual(r["status"], "source_pair_verified")
+        self.assertEqual(r["files_verified"], 7)
+        self.assertEqual(r["source_revision"], SHA)
+
+    def test_identity_digests_reproducible(self):
+        a, b = g.inspect(self.root), g.inspect(self.root)
+        self.assertEqual(a["evidence_sha256"], b["evidence_sha256"])
+
+    def test_audit_never_claims_runtime(self):
+        r = g.inspect(self.root)
+        self.assertFalse(r["runtime_verified"])
+        self.assertFalse(r["external_effects_verified"])
+        self.assertFalse(r["no_replay_authority"])
+
+    def test_change_in_background_fails(self):
+        (self.mirror/"background.js").write_text("different")
+        with self.assertRaisesRegex(g.UnsafeContract, "MIRROR_CONTENT_DIVERGED:background.js"):
+            g.inspect(self.root)
+
+    def test_change_in_manifest_fails(self):
+        m = manifest(); m["version"] = "0.7.0"
+        (self.src/"manifest.json").write_text(json.dumps(m))
+        with self.assertRaisesRegex(g.UnsafeContract, "MIRROR_CONTENT_DIVERGED:manifest.json"):
+            g.inspect(self.root)
+
+    def test_manifest_version_bump_requires_review(self):
+        self.mutate_manifest("version", "0.7.0")
+        with self.assertRaisesRegex(g.UnsafeContract, "EXTENSION_VERSION_REVIEW_REQUIRED"):
+            g.inspect(self.root)
+
+    def test_manifest_version_only_mv3(self):
+        self.mutate_manifest("manifest_version", 2)
+        with self.assertRaisesRegex(g.UnsafeContract, "MANIFEST_VERSION_UNEXPECTED"):
+            g.inspect(self.root)
+
+    def test_manifest_version_bool_not_int(self):
+        self.mutate_manifest("manifest_version", True)
+        with self.assertRaisesRegex(g.UnsafeContract, "MANIFEST_VERSION_UNEXPECTED"):
+            g.inspect(self.root)
+
+    def test_host_scope_broadening_rejected(self):
+        self.mutate_manifest("host_permissions", ["<all_urls>"])
+        with self.assertRaisesRegex(g.UnsafeContract, "HOST_SCOPE_CHANGED"):
+            g.inspect(self.root)
+
+    def test_permission_debugger_rejected(self):
+        self.mutate_manifest("permissions", list(g.PERMS)+["debugger"])
+        with self.assertRaisesRegex(g.UnsafeContract, "PERMISSION_SET_CHANGED"):
+            g.inspect(self.root)
+
+    def test_content_script_injection_scope_rejected(self):
+        self.mutate_manifest("content_scripts", [{"matches":["<all_urls>"],
+           "js":list(g.SCRIPTS),"run_at":"document_idle"}])
+        with self.assertRaisesRegex(g.UnsafeContract, "CONTENT_SCRIPT_SCOPE_CHANGED"):
+            g.inspect(self.root)
+
+    def test_content_script_list_rejected(self):
+        self.mutate_manifest("content_scripts", [{"matches":["https://chatgpt.com/*"],
+           "js":["other.js"],"run_at":"document_idle"}])
+        with self.assertRaisesRegex(g.UnsafeContract, "CONTENT_SCRIPT_SCOPE_CHANGED"):
+            g.inspect(self.root)
+
+    def test_background_worker_replacement_rejected(self):
+        self.mutate_manifest("background", {"service_worker":"other.js"})
+        with self.assertRaisesRegex(g.UnsafeContract, "BACKGROUND_WORKER_CHANGED"):
+            g.inspect(self.root)
+
+    def test_invalid_json_fails(self):
+        (self.src/"manifest.json").write_text("NOT JSON")
+        (self.mirror/"manifest.json").write_text("NOT JSON")
+        with self.assertRaisesRegex(g.UnsafeContract, "MANIFEST_JSON_INVALID"):
+            g.inspect(self.root)
+
+    def test_manifest_not_object_fails(self):
+        for parent in (self.src,self.mirror): (parent/"manifest.json").write_text("[]")
+        with self.assertRaisesRegex(g.UnsafeContract, "MANIFEST_NOT_OBJECT"):
+            g.inspect(self.root)
+
+    def test_missing_browser_file_unknown(self):
+        (self.src/"popup.js").unlink()
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "EVIDENCE_FILE_MISSING"):
+            g.inspect(self.root)
+
+    def test_symlink_file_rejected(self):
+        target = self.mirror/"background.js"
+        target.unlink()
+        try:
+            target.symlink_to(self.src/"background.js")
+        except OSError:
+            self.skipTest("Symlinks unavailable")
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "EVIDENCE_SYMLINK"):
+            g.inspect(self.root)
+
+    def test_symlink_parent_rejected(self):
+        (self.mirror/"background.js").unlink()
+        for f in list(self.mirror.iterdir()): f.unlink()
+        self.mirror.rmdir()
+        try: self.mirror.symlink_to(self.src, target_is_directory=True)
+        except OSError: self.skipTest("Symlinks unavailable")
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "EVIDENCE_SYMLINK"):
+            g.inspect(self.root)
+
+    def test_oversized_file_rejected(self):
+        (self.src/"core.js").write_bytes(b"x" * (g.MAX_FILE_BYTES+1))
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "EVIDENCE_FILE_TOO_LARGE"):
+            g.inspect(self.root)
+
+    def test_extra_private_file_is_not_read(self):
+        for directory in (self.src,self.mirror):
+            (directory/"bridge-config.json").write_text('! NOT VALID JSON secret=private-123 !')
+        evidence = g.inspect(self.root)
+        self.assertNotIn("bridge-config.json", json.dumps(evidence))
+        self.assertNotIn("private-123", json.dumps(evidence))
+
+    def test_no_path_leak_in_report(self):
+        r = g.inspect(self.root)
+        self.assertNotIn(str(self.root), json.dumps(r))
+
+    def test_revision_rejected_on_unvalidated_input(self):
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "INVALID_SOURCE_REVISION"):
+            g.inspect(self.root, "bad/secret/path")
+
+    def test_incident_reason_sanitized(self):
+        r = g._incident(g.UnsafeContract("MIRROR_CONTENT_DIVERGED:popup.js"), SHA)
+        self.assertEqual(r["reason_code"], "MIRROR_CONTENT_DIVERGED")
+        self.assertEqual(r["file"], "popup.js")
+        self.assertFalse(r["runtime_verified"])
+
+    def test_sanitized_incident_unknown_not_healthy(self):
+        r = g._incident(g.EvidenceUnavailable("EVIDENCE_READ_FAILED"), None)
+        self.assertEqual(r["status"], "evidence_unknown")
+
+    def test_cli_match_returns_zero_and_json(self):
+        output = self.root/"report.json"
+        rc = g.main(["--root",str(self.root),"--report",str(output)])
+        self.assertEqual(rc,0)
+        self.assertEqual(json.loads(output.read_text())["status"],"source_pair_verified")
+
+    def test_cli_mismatch_returns_two_and_json(self):
+        (self.mirror/"popup.js").write_text("mismatch")
+        output = self.root/"report.json"
+        rc = g.main(["--root",str(self.root),"--report",str(output)])
+        self.assertEqual(rc,2)
+        self.assertEqual(json.loads(output.read_text())["status"],"blocked")
+
+    def test_cli_missing_returns_three_and_json(self):
+        (self.src/"popup.js").unlink()
+        output = self.root/"report.json"
+        rc = g.main(["--root",str(self.root),"--report",str(output)])
+        self.assertEqual(rc,3)
+        self.assertEqual(json.loads(output.read_text())["status"],"evidence_unknown")
+
+    def test_atomic_report_path_only(self):
+        output=self.root/"nested"/"report.json"
+        g._save_json(output,{"x":1})
+        self.assertEqual(json.loads(output.read_text()),{"x":1})
+        self.assertFalse(list(output.parent.glob(".mirror-report-*")))
+
+    def test_large_json_values_not_logged(self):
+        evidence = g.inspect(self.root)
+        self.assertTrue(all(set(x)=={"file","bytes","sha256"} for x in evidence["file_digests"]))
+
+    def mutate_manifest(self, field, value):
+        m=manifest();m[field]=value
+        for base in (self.src,self.mirror):
+            (base/"manifest.json").write_text(json.dumps(m))
+
+
+if __name__ == "__main__":
+    unittest.main()
