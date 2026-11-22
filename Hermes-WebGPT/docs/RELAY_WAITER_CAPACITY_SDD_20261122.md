@@ -169,3 +169,26 @@
 Четыре теста воспроизводят clean старт; crash после `claimed`, сохранивший состояние без подписчиков; crash после `intent`, при котором новый Send недопустим; и terminal row, не влияющий на recovery. Тесты не объявляют все зависшие запросы остановленными исполнителями — active row может принадлежать ещё работающему отдельному процессу. Оператор сначала проверяет текущий PID, порт и ownership, а также последнюю независимо подтверждённую отправку, прежде чем принимать решение о восстановлении.
 
 Дальнейший *не реализованный* безопасный recovery: монопольный lease/fence между экземплярами Relay, durable pre-click effect marker и reconciliation по внешнему разговору. Только после доказанного pre-send blocked разрешать новую попытку. Для `intent/saved` нет автоматического повтора. Эти условия особенно важны при 50 агентах: concurrency storm не должен снимать защитные `uncertain` состояния.
+
+## 12. ADD-2026-11-22: атомарный журнал переходов Relay SQLite
+
+**Цель:** state transition Relay и доказательство локального перехода не должны расходиться при crash. Новые таблицы `request_state_events` и `request_state_audit_meta`, плюс два SQLite trigger (`AFTER INSERT`, `AFTER UPDATE OF state WHEN state changed`) устанавливаются аддитивно при инициализации базы. На любой `queued → claimed → intent → saved → done/blocked/uncertain` записывается seq, opaque request_id, before/after state, machine-only reason_code и UTC; внутри **той же транзакции**. Если транзакция откатывается, аудиторская запись откатывается вместе с изменением очереди. `UPDATE SET state=state` не притворяется прогрессом.
+
+При миграции старые строки **не** получают выдуманный `queued` или иной исторический переход. `request_state_audit_meta.pre_audit_existing_requests` необратимо отмечает количество строк до установки trigger. Флаг `history_complete_for_current_requests` консервативно ложный, если существуют такие старые строки (даже когда одна из них позднее изменяется). Несколько процессов должны мигрировать только в согласованном окне: schema DDL не эквивалент live rolling upgrade со старой версией, чьи запросы изменяются одновременно.
+
+`Queue.state_event_tail(limit)` возвращает только metadata: seq, SHA256 digest случайного request_id, previous/new state, sanitized reason, UTC, legacy history flags. Никаких payload, tool calls, result, saved_url, lease, worker, chat token. Сырые UUID остаются лишь *внутри приватной SQLite базы* для связи с канонической заявкой. `state_event_tail` не опубликован как unauthenticated HTTP endpoint; будущая адаптация требует scoped authentication и privacy review. Digest UUID **не заменяет** контроль доступа. Локальная база и её backup должны быть закрыты OS ACL.
+
+**Граница доказательства:** trigger подтверждает *закоммиченный локальный переход в Relay*, но **не** внешний Web UI Send, результат GPT или доставку Telegram. `recorded_utc` — момент локальной транзакции, не upstream timestamp и не доверенное модельное время. Порядок `seq` относится только к этой SQLite базе; cross-process/browser causality и потерянные ACK требуют отдельных receipt/fence/event-origin доказательств.
+
+### Проверки атомарности и риска
+
+- Test 1: последовательность `queued/claimed/intent/saved/done` фиксируется точно один раз, previous_state соответствует commit chain.
+- Test 2: явный SQL ROLLBACK удаляет **и** изменение state, **и** новый audit event.
+- Test 3: cancel после intent оставляет `uncertain` и исходный chain; нет обещания внешнего успеха.
+- Test 4: no-op state update не создаёт ложный прогресс.
+- Test 5: bounded metadata output, исключение приватного prompt/request id/URL/lease.
+- Test 6: миграция старой базы с claimed сохраняет историю неизвестной, никакого backfill.
+- Test 7: два SQLite подключения видят одинаковый закоммиченный журнал.
+- Test 8: queue_full откатывает новый request и не создаёт phantom `queued` record.
+
+**Ограничения/решения:** аудит пока не tamper-evident и не заменяет signed receipts. При долговременной эксплуатации таблица растёт — необходим retention/backup/export policy с подтверждением владельца; удаление старого неопределённого `intent` до reconcile запрещено. Сбой диска во время записи audit должен заставить саму state mutation отказать, что консервативнее потери журналирования; нужен fault-injection disk-full/WAL-corruption до выпуска. Trigger schema + migration на активной Windows базе проверяются только после SHA-бэкапа и согласованного простоя. Нельзя считать offline SQLite-тесты доказательством реального браузерного click.
