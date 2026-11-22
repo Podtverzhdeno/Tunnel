@@ -60,7 +60,9 @@ jobs:
             'Hermes-WebGPT/Measure-Hermes-Edge-CPU.ps1',
             'Hermes-WebGPT/Benchmark-Hermes-Edge.ps1',
             'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1',
-            'Hermes-WebGPT/Watch-Hermes-Edge-Lifetime.ps1'
+            'Hermes-WebGPT/Watch-Hermes-Edge-Lifetime.ps1',
+            'Hermes-WebGPT/Inspect-Hermes-Extension.ps1',
+            'Hermes-WebGPT/Test-Hermes-Extension-Provenance.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -79,3 +81,7 @@ jobs:
         shell: powershell
         run: |
           & 'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1'
+      - name: Validate redacted installed extension SHA provenance (synthetic)
+        shell: powershell
+        run: |
+          & 'Hermes-WebGPT/Test-Hermes-Extension-Provenance.ps1'
