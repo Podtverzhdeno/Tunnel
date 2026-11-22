@@ -588,7 +588,26 @@ async function poll(){
   return runningPoll;
 }
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
-  if(message?.type==="chat-smoke-resume" && !sender.tab){
+  if(message?.type==="chat-smoke-open-temporary" && !sender?.tab){
+    // User-initiated popup command only. Never automate Send, create a
+    // permanent chat or claim any Hermes job through this UI affordance.
+    (async()=>{
+      const windows=await chrome.windows.getAll({windowTypes:["normal"]});
+      const win=windows.find(x=>Number.isInteger(x.id));
+      if(!win){sendResponse({ok:false,reason:"no_browser_window"});return;}
+      const tab=await chrome.tabs.create({
+        windowId:win.id,
+        url:"https://chatgpt.com/?temporary-chat=true",
+        active:true
+      });
+      sendResponse({
+        ok:Number.isInteger(tab?.id),
+        temporary_ui_verified:false
+      });
+    })().catch(()=>sendResponse({ok:false,reason:"tab_open_failed"}));
+    return true;
+  }
+  if(message?.type==="chat-smoke-resume" && !sender?.tab){
     (async()=>{
       await chrome.storage.session.set({
         chatSmokeCircuit:{failures:0,paused:false}
