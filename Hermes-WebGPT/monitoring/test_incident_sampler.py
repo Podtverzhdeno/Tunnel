@@ -1,6 +1,7 @@
 """No Relay/browser/Telegram calls: synthetic immutable monitor reports only."""
 import contextlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -142,6 +143,31 @@ class SamplerTests(unittest.TestCase):
     def test_watch_mode_rejects_unbounded_high_frequency_polling(self):
         with self.assertRaises(SystemExit):
             s.main(['--db', str(self.source), '--journal', str(self.journal), '--interval', '0.01'])
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission bits are not Windows ACLs')
+    def test_new_journal_is_owner_only(self):
+        self.runmock()
+        self.assertEqual(self.journal.stat().st_mode & 0o077, 0)
+        self.assertEqual(self.journal.parent.stat().st_mode & 0o077, 0)
+        for sidecar in self.journal.parent.glob('incident.db-*'):
+            self.assertEqual(sidecar.stat().st_mode & 0o077, 0)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission bits are not Windows ACLs')
+    def test_insecure_existing_journal_is_rejected(self):
+        self.journal.parent.mkdir(mode=0o700, parents=True)
+        self.journal.write_text('not-secret')
+        self.journal.chmod(0o644)
+        with self.assertRaisesRegex(s.SamplerError, 'insecure_journal_permissions'):
+            self.runmock()
+        self.assertEqual(self.journal.read_text(), 'not-secret')
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission bits are not Windows ACLs')
+    def test_insecure_existing_directory_is_rejected(self):
+        self.journal.parent.mkdir(mode=0o755, parents=True)
+        self.journal.parent.chmod(0o755)
+        with self.assertRaisesRegex(s.SamplerError, 'insecure_journal_directory'):
+            self.runmock()
+        self.assertFalse(self.journal.exists())
 
     def test_cli_unavailable_has_no_user_path_or_credentials(self):
         from io import StringIO
