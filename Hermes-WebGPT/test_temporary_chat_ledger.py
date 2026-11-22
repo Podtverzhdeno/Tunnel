@@ -172,6 +172,41 @@ class TemporaryChatLedgerTests(unittest.TestCase):
                             for col in columns for word in forbidden))
         self.assertNotIn("profile_nonce", self.store.status(self.sid))
 
+    def test_replayed_ui_proof_and_response_receipt_never_authorize_result(self):
+        ui_proof = "a" * 32
+        user_evidence = "b" * 32
+        result_receipt = "c" * 64
+        self.store.attest_ui(self.sid, self.tab, self.epoch, self.profile,
+                             ui_verified=True, proof_nonce=ui_proof)
+        first = new_uuid()
+        self.store.prepare_request(self.sid, first, self.tab, self.epoch, self.profile)
+        self.store.arm_one_send(self.sid, first, self.tab, self.epoch, self.profile)
+        self.store.observe_user_turn(self.sid, first, self.tab, self.epoch,
+                                     self.profile, user_evidence)
+        self.store.observe_response(self.sid, first, self.tab, self.epoch,
+                                    self.profile, result_receipt)
+        self.store.acknowledge_result(self.sid, first, self.tab, self.epoch, self.profile)
+        with self.assertRaisesRegex(SessionConflict, "ui_attestation_nonce_replayed"):
+            self.store.attest_ui(self.sid, self.tab, self.epoch, self.profile,
+                                 ui_verified=True, proof_nonce=ui_proof)
+        self.assertEqual(self.store.status(self.sid)["state"], "AWAITING_TEMP_RECHECK")
+        self.verify()
+        second = new_uuid()
+        self.store.prepare_request(self.sid, second, self.tab, self.epoch, self.profile)
+        self.store.arm_one_send(self.sid, second, self.tab, self.epoch, self.profile)
+        with self.assertRaisesRegex(SessionConflict, "user_evidence_replayed"):
+            self.store.observe_user_turn(self.sid, second, self.tab, self.epoch,
+                                         self.profile, user_evidence)
+        self.store.observe_user_turn(self.sid, second, self.tab, self.epoch,
+                                     self.profile, secrets.token_hex(16))
+        with self.assertRaisesRegex(SessionConflict, "response_receipt_replayed"):
+            self.store.observe_response(self.sid, second, self.tab, self.epoch,
+                                        self.profile, result_receipt)
+        self.store.observe_response(self.sid, second, self.tab, self.epoch,
+                                    self.profile, secrets.token_hex(32))
+        self.store.acknowledge_result(self.sid, second, self.tab, self.epoch,
+                                      self.profile)
+
     def test_rejects_noncanonical_id_and_invalid_pause_reason(self):
         with self.assertRaisesRegex(SessionConflict, "noncanonical_uuid"):
             self.store.status(self.sid.upper())
