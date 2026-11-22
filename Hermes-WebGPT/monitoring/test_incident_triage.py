@@ -102,6 +102,20 @@ class IncidentTriageTests(unittest.TestCase):
         issues = t.triage_report(src)['issues']
         self.assertEqual([i['severity'] for i in issues], ['P1', 'P3'])
 
+    def test_queued_behind_claim_is_context_not_crash(self):
+        src = source(); src['counts']['queued'] = 3; src['counts']['claimed'] = 1
+        out = t.triage_report(src)
+        self.assertEqual(out['status'], 'no_queue_alerts_observed')
+        self.assertEqual(out['queueing_observation']['signal'], 'QUEUED_BEHIND_ACTIVE_CLAIM')
+        self.assertEqual(out['queueing_observation']['queued_requests'], 3)
+        self.assertFalse(out['queueing_observation']['cause_confirmed'])
+
+    def test_queue_without_active_claim_not_called_dead_worker(self):
+        src = source(); src['counts']['queued'] = 2
+        out = t.triage_report(src)
+        self.assertEqual(out['queueing_observation']['signal'], 'QUEUED_WITHOUT_ACTIVE_CLAIM')
+        self.assertNotIn('WORKER_DEAD', json.dumps(out))
+
     def test_invalid_payload(self):
         for source_input in (None, [], '', {}, {'observation': 'complete'},
                              {'observation': 'available', 'scope': 'general'}):
