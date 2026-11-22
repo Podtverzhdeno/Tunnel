@@ -27,12 +27,13 @@ jobs:
         run: |
           node chat-launch-smoke-desktop-test/web-companion/test_background.js
           node chat-launch-smoke-desktop-test/web-companion/test_recovery.js
+          node chat-launch-smoke-desktop-test/web-companion/test_popup_temporary.js
       - name: Compare packaged and source extension code
         run: |
           python3 - <<'PY'
           from pathlib import Path
           root = Path("chat-launch-smoke-desktop-test")
-          for name in ("core.js", "background_content.js", "background.js"):
+          for name in ("core.js", "background_content.js", "background.js", "popup.js", "popup.html"):
               a = (root / "web-companion" / name).read_bytes()
               b = (root / "web-extension" / name).read_bytes()
               if a != b:
