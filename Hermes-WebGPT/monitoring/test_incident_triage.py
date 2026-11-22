@@ -135,6 +135,18 @@ class IncidentTriageTests(unittest.TestCase):
         src['secret_url'] = 'ws://127.0.0.1:9876/token'
         self.assertNotIn('ws://', json.dumps(t.triage_report(src)))
 
+    def test_unhashable_error_does_not_raise_internal_typeerror(self):
+        out = t.triage_report({'observation': 'unavailable', 'error': ['private']})
+        self.assertEqual(out['observation_error'], 'unclassified_observation_error')
+
+    def test_unhashable_alert_fails_closed(self):
+        src = source(); src['alerts'] = [{'code': ['secret']}]
+        with self.assertRaises(t.TriageError): t.triage_report(src)
+
+    def test_nonstring_count_keys_fail_closed(self):
+        src = source(); src['alerts'] = [{'code': 'new_failures_since_snapshot', 'counts': {42: 1}}]
+        with self.assertRaises(t.TriageError): t.triage_report(src)
+
     def test_source_report_not_mutated(self):
         src = source(); src2 = deepcopy(src)
         t.triage_report(src)
