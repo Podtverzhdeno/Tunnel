@@ -33,7 +33,7 @@ UNAVAILABLE_CODES = frozenset({
     'baseline_too_large', 'invalid_row_limit',
     'invalid_stale_threshold', 'invalid_outcome_window',
     'invalid_latency_target', 'invalid_timestamp',
-    'baseline_unavailable_or_invalid',
+    'baseline_unavailable_or_invalid', 'observer_unavailable',
 })
 REASON_GROUPS = {
     'RATE_LIMIT': frozenset({'rate_limit'}),
