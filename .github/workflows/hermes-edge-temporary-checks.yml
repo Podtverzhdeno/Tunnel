@@ -1,0 +1,27 @@
+name: Hermes Edge Temporary — safe source checks
+on:
+  pull_request:
+    paths:
+      - "Hermes-WebGPT/**"
+      - "chat-launch-smoke-desktop-test/web-companion/**"
+      - "chat-launch-smoke-desktop-test/web-extension/**"
+      - ".github/workflows/hermes-edge-temporary-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check node and Python versions
+        run: |
+          node --version
+          python3 --version
+      - name: JS selector and Shadow DOM regression
+        run: node chat-launch-smoke-desktop-test/web-companion/test_core.js
+      - name: JS browser content send/ack regression
+        run: node chat-launch-smoke-desktop-test/web-companion/test_background_content.js
+      - name: Edge safety contract and Hermes synthetic Python tests
+        run: python3 -m unittest discover -s Hermes-WebGPT -p 'test_*.py' -v
