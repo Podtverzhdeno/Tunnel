@@ -8,7 +8,7 @@ async function simulate(mode){
     hash:"#chat-launch-smoke=bg-"+id,pathname:"/",search:"",
     href:"https://chatgpt.com/#chat-launch-smoke=bg-"+id
   };
-  let attempts=0,clicks=0,time=0,fillCalls=0,savedAcks=0;
+  let attempts=0,clicks=0,time=0,fillCalls=0,savedAcks=0,userScans=0;
   const editor={ownerDocument:null};
   const messages=[
     {getAttribute:k=>k==="data-message-author-role"?"user":null,textContent:prompt}
@@ -16,7 +16,10 @@ async function simulate(mode){
   const assistant={textContent:"ПРИНЯТО"};
   const doc={
     querySelectorAll(sel){
-      if(sel.includes('[data-message-author-role="user"]'))return clicks?messages:[];
+      if(sel.includes('[data-message-author-role="user"]')){
+        userScans++;
+        return clicks?messages:[];
+      }
       if(sel==="[data-message-author-role]")return messages;
       if(sel.includes('[data-message-author-role="assistant"]'))return clicks && mode!=="slow_answer"?[assistant]:[];
       return [];
@@ -28,7 +31,8 @@ async function simulate(mode){
   const core={
     findEditor(){return mode==="no_editor"?null:editor;},
     fillEditor(){fillCalls++;return mode!=="bad_fill";},
-    detectAccountConflict(){return mode==="account_error"&&clicks>0;},
+    detectAccountConflict(){return (mode==="account_error"&&clicks>0)||
+      (mode==="gated_account_error"&&savedAcks>0);},
     findSendButton(){return mode==="no_button" || (mode==="resync_button" && fillCalls<2)?null:{click(){
       clicks++;location.pathname="/c/abcdef-1234";
       location.href="https://chatgpt.com/c/abcdef-1234";
@@ -39,12 +43,12 @@ async function simulate(mode){
     if(msg.type==="chat-smoke-get"){
       attempts++;
       if(attempts<4)return {ok:false};
-      return {ok:true,prompt,completionMode:mode==="gated"||mode==="gated_delayed_ack"};
+      return {ok:true,prompt,completionMode:mode==="gated"||
+        mode==="gated_delayed_ack"||mode==="gated_account_error"};
     }
-    if(msg.type==="chat-smoke-stage"&&msg.stage==="message_saved"&&
-       mode==="gated_delayed_ack"){
+    if(msg.type==="chat-smoke-stage"&&msg.stage==="message_saved"){
       savedAcks++;
-      return {ok:savedAcks>=3};
+      if(mode==="gated_delayed_ack")return {ok:savedAcks>=3};
     }
     return {ok:true};
   }}};
@@ -60,7 +64,7 @@ async function simulate(mode){
     await new Promise(resolve=>setImmediate(resolve));
     if(received.some(x=>x.type==="chat-smoke-finished"))break;
   }
-  return {received,attempts,clicks};
+  return {received,attempts,clicks,userScans};
 }
 (async()=>{
   const good=await simulate("good");
@@ -84,6 +88,11 @@ async function simulate(mode){
     "saved chat URL reaches worker for report matching");
   assert.equal(gated.received.some(x=>x.type==="chat-smoke-finished"),false,
     "gated tab never self-closes based on DOM or timeout");
+  assert.ok(gated.userScans<=3,"acknowledged report avoids hot DOM polling");
+  const gatedAuth=await simulate("gated_account_error");
+  assert.equal(gatedAuth.clicks,1,"post-send account mismatch cannot repeat Send");
+  assert.equal(gatedAuth.received.find(x=>x.type==="chat-smoke-finished")?.reason,
+    "account_context_changed", "slow auth-only polling remains active after ACK");
   const delayed=await simulate("gated_delayed_ack");
   assert.equal(delayed.clicks,1,"lost handoff ACK never replays Send");
   assert.ok(delayed.received.filter(x=>x.type==="chat-smoke-stage"&&
