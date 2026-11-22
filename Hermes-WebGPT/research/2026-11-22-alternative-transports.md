@@ -5,15 +5,15 @@
 
 Для Hermes перспективнее отказаться от зависимости от web-среды как единственной системы инференса, а не изобретать очередной способ кликать по ChatGPT.com.
 
-Проверены доступные исходники обоих репозиториев: Hermes-WebGPT в Tunnel и пользовательский форк Hermes Agent. В Hermes Agent уже реализован провайдер openai-codex, device-code OAuth, refresh и режим codex_responses. Документация OpenAI отдельно называет Hermes Agent партнёром Sign in with ChatGPT, использующим при согласии владельца лимиты подходящей подписки. **Это НЕ доказательство, что partner login Nous Portal и текущий локальный провайдер openai-codex используют один и тот же согласованный OAuth-flow.** Перед подключением надо изучить версию установленного бинарника и разрешения действующего аккаунта.
+Проверены доступные исходники обоих репозиториев: Hermes-WebGPT в Tunnel и пользовательский форк Hermes Agent. В Hermes Agent уже реализован провайдер openai-codex, device-code OAuth, refresh и режим codex_responses, НО источник hermes_cli/auth.py устанавливает DEFAULT_CODEX_BASE_URL = https://chatgpt.com/backend-api/codex. Это НЕ документированный публичный OSS SIWC Responses endpoint и не должно механически заимствоваться для новой интеграции. Документация OpenAI отдельно называет Hermes Agent партнёром Sign in with ChatGPT, использующим при согласии владельца лимиты подходящей подписки. **Это НЕ доказательство, что partner login Nous Portal и текущий локальный провайдер openai-codex используют один и тот же согласованный OAuth-flow. Legacy backend требует отдельной проверки разрешённости; его не считать главным рекомендуемым production каналом.** Перед подключением надо изучить версию установленного бинарника и разрешения действующего аккаунта.
 
-Существует официальный отдельный Sign in with ChatGPT для локальных open-source приложений: пользователь даёт разрешение chatgpt.tokens.use.direct, клиент закрепляет ext_agent_host_id и полученный OAuth client_id за пользователем/рабочей областью, использует штатные PKCE/state/nonce, а затем отправляет разрешённые запросы через публичный POST https://api.openai.com/v1/responses. Никакие приватные backend-API ChatGPT, cookie extraction или автоматическое извлечение из веб-чата не требуются.
+Существует официальный отдельный Sign in with ChatGPT для локальных open-source приложений: пользователь даёт разрешение chatgpt.tokens.use.direct, клиент закрепляет ext_agent_host_id и полученный OAuth client_id за пользователем/рабочей областью, использует штатные PKCE/state/nonce, а затем отправляет разрешённые запросы через публичный POST https://api.openai.com/v1/responses. Никакие приватные backend-API ChatGPT, cookie extraction или автоматическое извлечение из веб-чата не требуются. Поэтому **главный кандидат для собственного нового transport — официальный SIWC → публичный Responses API**, а форковый legacy openai-codex — лишь объект read-only диагностики.
 
 ## Сравнение вариантов
 
 | Канал | Без расширения | Что предоставляет | Принципиальная граница |
 |---|---|---|---|
-| Native Hermes Codex | Да | Установленные Hermes provider/tool flow | Проверить авторизацию и модельную совместимость |
+| Native Hermes Codex (legacy fork) | Да | Встроенный provider/tool flow | По умолчанию chatgpt.com/backend-api/codex; не приравнивать к официальному SIWC |
 | SIWC OSS + Responses | Да | OAuth по плану, streaming, программный ответ | Отдельное согласие, preview limits и локальная история |
 | Codex App Server | Да | JSON-RPC, persistent threads, events, approvals | Не идентичен Hermes tool-calling, требует адаптера |
 | Codex CLI | Да | JSON-события и независимый task runner | Процесс на запрос, lifecycle, контекст |
@@ -59,8 +59,8 @@ Hermes-WebGPT/relay.py уже содержит два веб-маршрута ex
 ## Измеримые acceptance gates
 
 G0 — read-only inventory Windows: версии установленного Hermes, source SHA/loaded runtime, текущий Gateway статус; без вывода секретов.
-G1 — отдельный HERMES_HOME, добровольный owner login, одна подтверждённая нативная модельная генерация в изоляции, реальный available model.
-G2 — только при необходимости собственный SIWC flow: настоящий granted scope, проверенная модель, два безопасных последовательных turns, tool-followup и события failed/incomplete; no production writes.
+G1 — read-only аудит legacy Hermes provider endpoint/авторизации, без попыток переделывать его в неофициальный SIWC. В отдельном HERMES_HOME проверить, доступен ли штатный поддерживаемый партнёрский путь, с отдельным owner consent; ни одна auth-cookieless гипотеза не означает права на legacy endpoint.
+G2 — собственный официальный SIWC flow как основной кандидат: настоящий granted scope, проверенная модель, два безопасных последовательных turns, tool-followup и события failed/incomplete; no production writes.
 G3 — App Server subprocess stdio: handshake, start/resume/interrupt, approval-required, crash/restart, cross-thread rejection, locked-down tools.
 G4 — изолированная тестовая тема Telegram: один ответ, один tool-call, неизвестный ACK, exact conversation identity, отсутствие дублей.
 G5 — пятисессионный прогон с реальными квотами и p50/p95; явные latency/error/failure metrics без выдуманных процентов.
@@ -80,5 +80,6 @@ G6 — версия и SHA фиксированы, backup, controlled rollout п
 - https://learn.chatgpt.com/docs/app-server.md
 - https://openai.com/policies/terms-of-use/
 - https://github.com/Podtverzhdeno/hermes-agent/blob/main/website/docs/integrations/providers.md
+- https://github.com/Podtverzhdeno/hermes-agent/blob/main/hermes_cli/auth.py
 
 **Самооценка:** защищённый лабораторный стенд и сравнительный анализ есть; **0 нового live Telegram E2E в данном заходе**. Этот документ сохраняет исследовательские решения и не является разрешением обходить существующие protected host approval/broker механизмы.
