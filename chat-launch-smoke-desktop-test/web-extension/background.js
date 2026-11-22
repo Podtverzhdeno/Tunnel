@@ -715,7 +715,14 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   })().catch(e=>{console.warn("Chat smoke message:",String(e));sendResponse({ok:false});});
   return true;
 });
-chrome.tabs.onRemoved.addListener(tabId=>{
+chrome.tabs.onRemoved.addListener((tabId,removeInfo)=>{
+  // Diagnostic only. This event can be absent on a hard browser crash;
+  // it never establishes that Hermes, rather than the user, closed a window.
+  if(removeInfo?.isWindowClosing===true){
+    chrome.storage.local.set({chatSmokeWindowCloseObservation:{
+      at:Date.now(),code:"browser_window_closing"
+    }}).catch(()=>{});
+  }
   listActive().then(tasks=>{
     for(const task of tasks){
       if(task.tabId===tabId&&!task.finishing){
