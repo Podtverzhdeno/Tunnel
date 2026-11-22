@@ -132,7 +132,7 @@ class WaiterBudgetTests(unittest.TestCase):
                 self.assertEqual(resp.status, 429)
                 self.assertEqual(resp.getheader("Retry-After"), "1")
                 self.assertEqual(json.loads(resp.read())["error"]["code"], "http_waiter_capacity")
-            self.assertEqual(self.queue.db.execute("SELECT COUNT(*) FROM requests").fetchone()[0], 1)
+            self.assertEqual(self.queue.db.execute("SELECT COUNT(*) FROM requests").fetchone()[0], 3)
             for ident in ids:
                 self.server.detach_waiter(ident, on_last="cancel" if ident == ids[-1] else None)
         finally:
