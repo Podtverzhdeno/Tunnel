@@ -329,6 +329,27 @@ class TemporaryChatLedger:
                 "WHERE session_id=? AND state='PREPARED'", (now, sid)
             )
 
+    def archive_paused_session(self, session_id, profile_nonce, tab_id,
+                               document_epoch, *, user_approved):
+        """Explicitly relinquish a dead tab's identity while keeping noReplay.
+
+        This is NOT browser or tab deletion. The operator must independently
+        confirm that the old session will never be resumed and any uncertain
+        Send has been reconciled manually. Merely hitting a timeout cannot call
+        this transition.
+        """
+        sid = _uuid(session_id)
+        if user_approved is not True:
+            raise SessionConflict("explicit_owner_release_required")
+        with self._tx() as con:
+            row = self._session(con, sid, "PAUSED_NEEDS_RECONCILIATION")
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
+            con.execute(
+                "UPDATE session SET state='ARCHIVED',tab_id=NULL,window_id=NULL,"
+                "document_epoch=NULL,ui_proof_at=NULL,updated=? WHERE id=?",
+                (time.time(), sid)
+            )
+
     def status(self, session_id):
         sid = _uuid(session_id)
         with self._connection() as con:
