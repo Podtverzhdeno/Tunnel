@@ -1,0 +1,26 @@
+name: Hermes queue observer integrity
+on:
+  push:
+    branches:
+      - docs/hermes-gpt-atomic-sdd-monitor-review-20261122
+    paths:
+      - Hermes-WebGPT/monitoring/**
+      - .github/workflows/hermes-queue-observer-integrity.yml
+  pull_request:
+    paths:
+      - Hermes-WebGPT/monitoring/**
+      - .github/workflows/hermes-queue-observer-integrity.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-observer-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Privacy-safe read-only queue observer tests
+        run: python -m unittest discover -s Hermes-WebGPT/monitoring -p 'test_*.py' -v
