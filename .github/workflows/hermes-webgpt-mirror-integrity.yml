@@ -1,0 +1,32 @@
+name: Hermes WebGPT extension mirror integrity (read-only)
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '19 5,17 * * *'
+permissions:
+  contents: read
+jobs:
+  check-source-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Source-integrity contract regression tests
+        run: python -m unittest discover -s Hermes-WebGPT/monitoring -p 'test_extension_mirror_guard.py' -v
+      - name: Validate actual extension files and reviewed permissions
+        run: |
+          python Hermes-WebGPT/monitoring/extension_mirror_guard.py \
+            --root . --revision "${GITHUB_SHA}" --report webgpt-mirror-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webgpt-mirror-${{ github.run_id }}
+          path: webgpt-mirror-report.json
+          retention-days: 7
+          if-no-files-found: ignore
