@@ -15,7 +15,8 @@ Promise.all([
     "Зафиксировано закрытие окна браузера: "+
       new Date(observed.at).toLocaleString()+". Это не доказывает причину закрытия.":
     "События закрытия окна расширением не наблюдались (это не исключает краш).";
-  resourceProfile.value=last.chatSmokeEnergyProfile==="max_parallel"?"max_parallel":"balanced";
+  resourceProfile.value=["eco","balanced","max_parallel"].includes(last.chatSmokeEnergyProfile)?
+    last.chatSmokeEnergyProfile:"balanced";
   const date=typeof v?.updatedAt==="number"?
     new Date(v.updatedAt).toLocaleString():"";
   state.textContent=v?
@@ -50,7 +51,7 @@ resume.addEventListener("click",async()=>{
 });
 resourceProfile.addEventListener("change",async()=>{
   const chosen=resourceProfile.value;
-  if(chosen!=="balanced"&&chosen!=="max_parallel")return;
+  if(!["eco","balanced","max_parallel"].includes(chosen))return;
   resourceProfile.disabled=true;
   try{
     await chrome.storage.local.set({chatSmokeEnergyProfile:chosen});
