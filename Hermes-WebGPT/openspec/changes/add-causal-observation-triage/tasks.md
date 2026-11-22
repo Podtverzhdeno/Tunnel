@@ -12,3 +12,8 @@
 - [ ] Review bridge to hermes-agent PR #9 and Autopilot ledger PR #1 and prevent duplicate state machines.
 - [ ] Require collector authentication, replay guard, privacy, E2E fault injection and independent verifier before autonomy.
 - [ ] Keep genuinely gated owner/host terminal approvals enforced; do not assume file-based consent is an approval token.
+
+- [x] Реализован opt-in incident_sampler.py: read-only Relay sampling + отдельный crash-atomic SQLite baseline/event journal, bounded retention, foreground --interval.
+- [x] 15 новых synthetic sampler regression: snapshot/incident atomicity, 24 concurrent cycles, corrupt baseline, privacy, crash rollback, explicit external source DB protection.
+- [x] Runbook для оператора с точными командами, границами доказательств и non-deployment warning.
+- [ ] Сверить actual loaded Relay DB source/schema, выполнить на Windows и проверить не только synthetic tests.
