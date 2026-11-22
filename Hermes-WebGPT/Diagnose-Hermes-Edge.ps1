@@ -40,7 +40,7 @@ function Get-OwnedIds([object[]]$rows, [string]$targetProfile) {
           $ids.Add([int]$r.ProcessId)) { $changed = $true }
     }
   }
-  return ,@($ids)
+  return @($ids | ForEach-Object { [int]$_ })
 }
 function Take-Sample([int[]]$pids) {
   $measure = @{}
