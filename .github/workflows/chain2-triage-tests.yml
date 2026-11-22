@@ -1,0 +1,35 @@
+name: Chain2 triage offline tests
+
+on:
+  pull_request:
+    paths:
+      - "scripts/chain2-triage.py"
+      - "scripts/test_chain2_triage.py"
+      - ".github/workflows/chain2-triage-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/chain2-triage.py"
+      - "scripts/test_chain2_triage.py"
+      - ".github/workflows/chain2-triage-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    name: Chain2 unittest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Offline Chain2 triage tests
+        run: python -m unittest discover -s scripts -p "test_chain2_triage.py" -v

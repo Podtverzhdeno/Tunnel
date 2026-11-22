@@ -88,5 +88,46 @@ class TriageTests(unittest.TestCase):
             self.assertEqual(list(root.iterdir()),[])
 
 
+    def test_missing_handoff_cannot_be_pending_ack(self):
+        job="a"*36
+        data=fixture(parent(job,confirmed=True),
+                     record(job,handoff_exists=False,handoff_valid=False,
+                            request_valid=True))
+        result=module.classify(data)
+        self.assertEqual(result["jobs"][0]["category"],
+                         "worker_evidence_incomplete")
+        self.assertFalse(result["jobs"][0]["handoff_request_valid"])
+
+    def test_unknown_handoff_validity_cannot_be_pending_ack(self):
+        job="b"*36
+        data=fixture(parent(job,confirmed=True),
+                     record(job,handoff_exists=True,handoff_valid=None,
+                            request_valid=True))
+        result=module.classify(data)
+        self.assertEqual(result["jobs"][0]["category"],
+                         "worker_evidence_incomplete")
+        self.assertFalse(result["jobs"][0]["handoff_request_valid"])
+
+    def test_non_boolean_request_flag_does_not_promote_review(self):
+        job="c"*36
+        data=fixture(parent(job,confirmed=True),
+                     record(job,handoff_exists=True,handoff_valid=True,
+                            request_valid="true"))
+        result=module.classify(data)
+        self.assertEqual(result["jobs"][0]["category"],
+                         "worker_evidence_incomplete")
+        self.assertFalse(result["jobs"][0]["handoff_request_valid"])
+
+    def test_complete_handoff_and_exact_request_true_is_pending_ack(self):
+        job="d"*36
+        data=fixture(parent(job,confirmed=True),
+                     record(job,handoff_exists=True,handoff_valid=True,
+                            request_valid=True))
+        result=module.classify(data)
+        self.assertEqual(result["jobs"][0]["category"],
+                         "handoff_request_pending_ack")
+        self.assertTrue(result["jobs"][0]["handoff_request_valid"])
+
+
 if __name__=="__main__":
     unittest.main(verbosity=2)
