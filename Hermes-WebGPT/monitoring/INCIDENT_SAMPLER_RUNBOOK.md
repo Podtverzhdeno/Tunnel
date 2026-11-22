@@ -44,7 +44,7 @@ incident_sampler.py делает **явный** read-only опрос сущес�
 - Параллельные экземпляры сериализуют состояние через SQLite BEGIN IMMEDIATE; baseline и запись инцидента атомарны.
 - При падении до commit предыдущий baseline сохранён. После commit оба соответствующих поля видны согласованно.
 - Ограничены размеры snapshot/incident, лимиты строк и retention; без network/model.
-- Проведены синтетические regression: 15 sampler + 29 causal triage, включая 24 конкурентных цикла, invalid/corrupt baseline, outage, no secrets, rollback. Эти тесты не являются реальным Windows/GPT/Telegram E2E.
+- Проведены синтетические regression: 16 sampler + 29 causal triage, включая 24 конкурентных цикла, invalid/corrupt baseline, outage, no secrets, rollback. Эти тесты не являются реальным Windows/GPT/Telegram E2E.
 - Требуются отдельно smoke полного существующего monitor suite на настоящей Windows версии и верификация скачанных/загруженных Git SHA.
 
 ## Недостатки текущего этапа
