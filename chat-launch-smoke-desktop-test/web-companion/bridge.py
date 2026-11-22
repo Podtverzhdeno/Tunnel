@@ -28,6 +28,47 @@ PORT = 18763
 MAX_ACTIVE_JOBS = 25
 LOCK = threading.RLock()
 
+# A bounded event tail cannot discard the earliest no-replay warning: otherwise
+# an unknown Send could become eligible for browser recovery after 60+ benign
+# telemetry events. Preserve the original warning in the SAME replaced JSON.
+RECOVERY_BLOCKING_STAGES = frozenset({
+    "unknown", "report_disputed", "tab_preserved", "tab_binding_disputed",
+    "tab_identity_unverified", "auth_context_changed",
+})
+RECOVERY_BLOCKING_REASONS = frozenset({
+    "account_context_changed", "unexpected_close",
+})
+DIAGNOSTIC_EVENT_CAP = 60
+
+
+def is_recovery_blocker(event):
+    return (
+        isinstance(event, dict)
+        and (event.get("stage") in RECOVERY_BLOCKING_STAGES
+             or event.get("reason") in RECOVERY_BLOCKING_REASONS)
+    )
+
+
+def bounded_diagnostics(previous, new_event, cap=DIAGNOSTIC_EVENT_CAP):
+    """Retain the earliest recovery blocker and the newest observations.
+
+    No new file, field or trust claim is introduced. One atomic JSON replace
+    contains BOTH the sticky blocker and bounded recent telemetry. This only
+    protects *recorded* events; a crash before recording remains uncertain.
+    """
+    if (not isinstance(previous, list)
+            or any(not isinstance(item, dict) for item in previous)
+            or not isinstance(new_event, dict) or cap < 2):
+        raise ValueError("invalid_diagnostic_history")
+    events = previous + [new_event]
+    if len(events) <= cap:
+        return events
+    first_blocker = next((item for item in events if is_recovery_blocker(item)), None)
+    tail = events[-cap:]
+    if first_blocker is not None and not any(item is first_blocker for item in tail):
+        return [first_blocker] + events[-(cap - 1):]
+    return tail
+
 def completion_client_ready():
     """Fail closed: old/stale browser workers must not claim completion-gated jobs.
 
@@ -62,10 +103,7 @@ def recovery_candidate(job_id):
         events = json.loads((DIAG / (job_id + ".json")).read_text(encoding="utf-8"))
         if not isinstance(events, list) or any(not isinstance(e, dict) for e in events):
             return False, "missing_evidence"
-        if any(e.get("reason") in ("account_context_changed", "unexpected_close")
-               or e.get("stage") in ("unknown", "report_disputed", "tab_preserved",
-                                      "tab_binding_disputed")
-               for e in events):
+        if any(is_recovery_blocker(e) for e in events):
             return False, "needs_reconciliation"
         sent = next((i for i in range(len(events)-1,-1,-1)
                      if events[i].get("stage")=="send_clicked"),None)
@@ -437,19 +475,28 @@ class Handler(BaseHTTPRequestHandler):
             target = DIAG / (jid + ".json")
             try:
                 previous = json.loads(target.read_text(encoding="utf-8")) if target.exists() else []
-                if not isinstance(previous, list):
-                    previous = []
-            except (ValueError, OSError):
-                previous = []
+                if (not isinstance(previous, list)
+                        or any(not isinstance(event, dict) for event in previous)):
+                    raise ValueError("invalid_diagnostic_history")
+            except (ValueError, OSError, UnicodeError):
+                # Do not silently replace a damaged history: that could erase
+                # recorded post-Send uncertainty and reopen unsafe recovery.
+                self._reply(409, {"error": "diagnostic_history_unreadable"})
+                return
             item = {
                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "stage": stage
             }
             if reason:
                 item["reason"] = reason
-            previous = (previous + [item])[-60:]
+            previous = bounded_diagnostics(previous, item)
             tmp = DIAG / (jid + ".writing")
-            tmp.write_text(json.dumps(previous, ensure_ascii=False), encoding="utf-8")
+            # A complete replacement is prepared before visible commit. Avoid
+            # reporting an ACK if the log write or replacement failed.
+            with tmp.open("w", encoding="utf-8") as output:
+                json.dump(previous, output, ensure_ascii=False)
+                output.flush()
+                os.fsync(output.fileno())
             os.replace(tmp, target)
             self._reply(200, {"ok": True, "recorded": True})
 
