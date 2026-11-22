@@ -17,6 +17,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -25,6 +26,10 @@ MODEL_CDP='web-chatgpt-high-cdp'
 MAX_BODY=524288
 MAX_PROMPT=120000
 TERMINAL={'done','blocked','uncertain'}
+# Admission safety for many GPT/Hermes agents: no unbounded HTTP waiters
+# for one logical turn while the actual browser still has one active slot.
+DEFAULT_MAX_HTTP_WAITERS=64
+DEFAULT_MAX_WAITERS_PER_TURN=8
 from hermes_tool_schema_guard import ToolSchemaError, validate_offered_tool_arguments
 from model_prompt_compaction import model_request_for_web
 
@@ -171,6 +176,23 @@ def parse_reply(text,request,ident):
     return {'id':'chatcmpl-hermes-'+ident,'object':'chat.completion','created':int(time.time()),'model':request['model'],
             'choices':[{'index':0,'message':message,'finish_reason':'tool_calls' if calls else 'stop'}]}
 
+@contextmanager
+def relay_audit_snapshot(connection):
+    """Stable read across event page and metadata on one SQLite connection.
+
+    Nested SAVEPOINT works inside caller's existing BEGIN IMMEDIATE during
+    fault injection; RELEASE never commits or changes the outer transaction.
+    """
+    connection.execute("SAVEPOINT relay_audit_snapshot")
+    try:
+        yield
+    except BaseException:
+        connection.execute("ROLLBACK TO SAVEPOINT relay_audit_snapshot")
+        raise
+    finally:
+        connection.execute("RELEASE SAVEPOINT relay_audit_snapshot")
+
+
 class Queue:
     def __init__(self,path):
         self.db=sqlite3.connect(path,check_same_thread=False,isolation_level=None)
@@ -198,8 +220,84 @@ class Queue:
           request_id TEXT PRIMARY KEY,
           page_key TEXT NOT NULL UNIQUE,
           worker TEXT NOT NULL)''')
+        # All state transitions below are already SQL UPDATE/INSERT. SQLite
+        # triggers record metadata in the SAME transaction as each mutation,
+        # including rollbacks; no raw prompt, tool output, lease or URL.
+        # Existing old rows are not given fabricated historical transitions.
+        self.db.execute('''CREATE TABLE IF NOT EXISTS request_state_events (
+          seq INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id TEXT NOT NULL,
+          previous_state TEXT,
+          new_state TEXT NOT NULL,
+          reason_code TEXT,
+          recorded_utc TEXT NOT NULL)''')
+        self.db.execute('''CREATE INDEX IF NOT EXISTS request_state_events_by_request
+          ON request_state_events(request_id,seq)''')
+        # One-time migration boundary: old records cannot retroactively
+        # acquire pre-install transitions. Keep the missing-history marker.
+        self.db.execute('''CREATE TABLE IF NOT EXISTS request_state_audit_meta (
+          id INTEGER PRIMARY KEY CHECK(id=1),
+          pre_audit_existing_requests INTEGER NOT NULL)''')
+        self.db.execute('''INSERT OR IGNORE INTO request_state_audit_meta
+          (id,pre_audit_existing_requests)
+          SELECT 1,COUNT(*) FROM requests''')
+        self.db.execute('''CREATE TRIGGER IF NOT EXISTS relay_audit_request_created
+          AFTER INSERT ON requests
+          BEGIN
+            INSERT INTO request_state_events(
+              request_id,previous_state,new_state,reason_code,recorded_utc)
+            VALUES(NEW.id,NULL,NEW.state,NEW.reason,
+                   strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+          END''')
+        self.db.execute('''CREATE TRIGGER IF NOT EXISTS relay_audit_state_changed
+          AFTER UPDATE OF state ON requests
+          WHEN OLD.state <> NEW.state
+          BEGIN
+            INSERT INTO request_state_events(
+              request_id,previous_state,new_state,reason_code,recorded_utc)
+            VALUES(NEW.id,OLD.state,NEW.state,NEW.reason,
+                   strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+          END''')
         self.lock=threading.RLock()
     def close(self):self.db.close()
+    def state_event_tail(self,limit=100):
+        """Metadata-only committed SQL state chronology (not browser receipts).
+
+        During upgrades, existing requests may lack old history. Report that
+        gap explicitly. The sequence is database insertion/commit order, not
+        timestamp causality across browser workers or external effects.
+        """
+        if type(limit) is not int or not 1<=limit<=500:
+            raise RelayError('invalid_audit_limit')
+        with self.lock, relay_audit_snapshot(self.db):
+            rows=self.db.execute('''
+                SELECT seq,request_id,previous_state,new_state,reason_code,recorded_utc
+                FROM request_state_events ORDER BY seq DESC LIMIT ?''',(limit,)).fetchall()
+            unobserved=self.db.execute('''
+                SELECT COUNT(*) FROM requests r
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM request_state_events e WHERE e.request_id=r.id)
+                ''').fetchone()[0]
+            baseline=self.db.execute('''
+                SELECT pre_audit_existing_requests FROM request_state_audit_meta
+                WHERE id=1''').fetchone()[0]
+            events=[]
+            for row in rows:
+                code=row['reason_code']
+                if not isinstance(code,str) or not re.fullmatch(r'[a-z_]{1,60}',code):
+                    code='none' if code is None else 'other'
+                events.append({
+                    'seq':row['seq'],
+                    'request_digest':hashlib.sha256(row['request_id'].encode()).hexdigest(),
+                    'previous_state':row['previous_state'],'new_state':row['new_state'],
+                    'reason_code':code,'recorded_utc':row['recorded_utc']})
+            return {'events':events,
+                    'history_missing_request_count':unobserved,
+                    'pre_audit_existing_request_count':baseline,
+                    'history_complete_for_current_requests':unobserved==0 and baseline==0,
+                    'ordering':'sqlite_transaction_local_not_external_effect_order',
+                    'browser_send_confirmed':False}
+
     def read(self,ident):
         with self.lock:
             row=self.db.execute('SELECT * FROM requests WHERE id=?',(ident,)).fetchone()
@@ -262,6 +360,48 @@ class Queue:
                 if row['transport'] in counts and row['state'] in counts[row['transport']]:
                     counts[row['transport']][row['state']]=row['total']
         return counts
+    def state_events_since(self,after_seq=0,limit=100):
+        """Cursor-feed of committed local states; *not* external UI receipts.
+
+        Only safe machine metadata are returned. Readers must be authenticated
+        at the HTTP boundary and keep an independent durable cursor.
+        """
+        if (type(after_seq) is not int or not 0<=after_seq<2**63 or
+                type(limit) is not int or not 1<=limit<=500):
+            raise RelayError('invalid_audit_cursor')
+        with self.lock, relay_audit_snapshot(self.db):
+            rows=self.db.execute('''
+                SELECT seq,request_id,previous_state,new_state,reason_code,recorded_utc
+                FROM request_state_events
+                WHERE seq>? ORDER BY seq ASC LIMIT ?''',
+                (after_seq,limit+1)).fetchall()
+            has_more=len(rows)>limit
+            batch=rows[:limit]
+            before=self.db.execute('''
+                SELECT pre_audit_existing_requests FROM request_state_audit_meta
+                WHERE id=1''').fetchone()[0]
+            events=[]
+            for row in batch:
+                code=row['reason_code']
+                if not isinstance(code,str) or not re.fullmatch(r'[a-z_]{1,60}',code):
+                    code='none' if code is None else 'other'
+                events.append({
+                    'seq':row['seq'],
+                    'request_digest':hashlib.sha256(row['request_id'].encode()).hexdigest(),
+                    'previous_state':row['previous_state'],'new_state':row['new_state'],
+                    'reason_code':code,'recorded_utc':row['recorded_utc']})
+            # On a fresh DB, two installed SQL triggers cover every new
+            # request and state change. On a migrated DB, the permanent
+            # baseline marker must remain false. Avoid O(all requests) joins
+            # on every high-frequency monitoring poll by dozens of agents.
+            return {'events':events,
+                    'has_more':has_more,
+                    'next_seq':events[-1]['seq'] if events else after_seq,
+                    'pre_audit_existing_request_count':before,
+                    'history_complete_for_current_requests':before==0,
+                    'ordering':'sqlite_transaction_local_not_external_effect_order',
+                    'browser_send_confirmed':False}
+
     def submit(self,value,transport='extension',turn_id=None):
         if transport not in ('extension','playwright'):raise RelayError('invalid_transport')
         if turn_id is not None and (not isinstance(turn_id,str) or
@@ -493,10 +633,36 @@ class Queue:
                 "WHERE id=? AND state NOT IN ('done','blocked','uncertain')",
                 (ident,))
 
+def startup_reconciliation_status(queue):
+    """Redacted startup snapshot: detect leftover durable active work.
+
+    A fresh process loses the previous in-memory HTTP waiter registry, but
+    SQLite claimed/intent/saved rows persist. NEVER recycle them here: a
+    browser Send could have happened and its ACK could be missing.
+    """
+    counts=queue.status_counts()
+    states=('claimed','intent','saved')
+    active={state:sum(per_transport[state] for per_transport in counts.values())
+            for state in states}
+    total=sum(active.values())
+    return {'startup_active_by_state':active,
+            'startup_active_requests':total,
+            'startup_reconciliation_required':total>0,
+            'startup_recovery_action':'inspect_previous_effects_no_automatic_replay'
+                if total else 'none'}
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads=True
     def __init__(self,address,queue,key,timeout=1200,enable_playwright=False,
-                 playwright_key=None):
+                 playwright_key=None,max_http_waiters=DEFAULT_MAX_HTTP_WAITERS,
+                 max_waiters_per_turn=DEFAULT_MAX_WAITERS_PER_TURN):
+        if (type(max_http_waiters) is not int or not 1<=max_http_waiters<=1000
+                or type(max_waiters_per_turn) is not int or
+                not 1<=max_waiters_per_turn<=max_http_waiters):
+            raise RelayError('invalid_waiter_budget')
+        self.max_http_waiters=max_http_waiters
+        self.max_waiters_per_turn=max_waiters_per_turn
         self.queue,self.key,self.request_timeout=queue,key,timeout
         self.enable_playwright=bool(enable_playwright)
         if self.enable_playwright:
@@ -557,7 +723,15 @@ class Server(ThreadingHTTPServer):
         # attach in the gap between detach and cancellation.
         with self._waiters_lock:
             if self._closing.is_set():raise RelayError('relay_shutting_down')
+            # Reject before queue.submit() to avoid orphaning an unclaimed
+            # request when all HTTP subscriber slots are already occupied.
+            if sum(self._waiters.values())>=self.max_http_waiters:
+                raise RelayError('http_waiter_capacity')
             ident=self.queue.submit(body,transport=transport,turn_id=turn_id)
+            # For an existing logical turn, rejecting a new subscriber must
+            # never cancel or modify its in-flight browser execution.
+            if self._waiters.get(ident,0)>=self.max_waiters_per_turn:
+                raise RelayError('turn_waiter_capacity')
             self._waiters[ident]=self._waiters.get(ident,0)+1
             return ident
     def detach_waiter(self,ident,on_last=None,reason='client_disconnected'):
@@ -602,7 +776,9 @@ class Handler(BaseHTTPRequestHandler):
     def write_json(self,status,value):
         body=compact(value).encode()
         self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8')
-        self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers()
+        self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store')
+        if status==429:self.send_header('Retry-After','1')
+        self.end_headers()
         self.wfile.write(body)
     def error(self,status,code):self.write_json(status,{'error':{'message':code,'type':'relay_error','code':code}})
     def principal(self):
@@ -640,6 +816,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.write_json(200,{'object':'list','data':[
                 {'id':model,'object':'model','owned_by':'local-web-relay'}
                 for model in ids]})
+        if self.path.startswith('/bridge/audit'):
+            # Authenticated Hermes principal only (already checked above).
+            match=re.fullmatch(r'/bridge/audit(?:\?after=([0-9]{1,18})&limit=([0-9]{1,3}))?',self.path)
+            if not match:return self.error(400,'invalid_audit_query')
+            after=int(match.group(1)) if match.group(1) else 0
+            limit=int(match.group(2)) if match.group(2) else 100
+            try:
+                return self.write_json(200,self.server.queue.state_events_since(after,limit))
+            except RelayError:
+                return self.error(400,'invalid_audit_cursor')
+            except sqlite3.Error:
+                # Storage failure is not "no events" and not an agent
+                # completion. Never disclose SQL paths or raw DB errors.
+                return self.error(503,'audit_storage_unavailable')
         if self.path=='/bridge/status':
             counts=self.server.queue.status_counts()
             active=sum(counts[transport][state]
@@ -655,6 +845,8 @@ class Handler(BaseHTTPRequestHandler):
                 'aged_active_basis':'age_since_request_creation_not_worker_heartbeat',
                 'active_requests':active,
                 'active_http_waiters':self.server.active_waiter_count(),
+                'max_http_waiters':self.server.max_http_waiters,
+                'max_waiters_per_turn':self.server.max_waiters_per_turn,
                 'max_active_requests':1,
             })
         return self.error(404,'not_found')
@@ -689,6 +881,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.error(503,'relay_shutting_down')
         waiter_registered=False
         abandoned=False
+        stream_headers_sent=False
         try:
             length=int(self.headers.get('Content-Length','0'))
             if length<=0 or length>MAX_BODY:raise RelayError('invalid_body_size')
@@ -757,6 +950,7 @@ class Handler(BaseHTTPRequestHandler):
             streaming=body.get('stream') is True
             if streaming:
                 self.send_response(200);self.send_header('Content-Type','text/event-stream');self.send_header('Cache-Control','no-store');self.end_headers()
+                stream_headers_sent=True
             while True:
                 if self.server._closing.is_set():
                     # Cooperative drain precedes Queue.close(), including
@@ -815,8 +1009,18 @@ class Handler(BaseHTTPRequestHandler):
             abandoned=waiter_registered
             try:
                 status=(503 if isinstance(exc,RelayError) and
-                        str(exc)=='relay_shutting_down' else 400)
-                self.error(status,str(exc) if isinstance(exc,RelayError) else 'invalid_request')
+                        str(exc)=='relay_shutting_down' else
+                        429 if isinstance(exc,RelayError) and
+                        str(exc) in ('http_waiter_capacity','turn_waiter_capacity') else 400)
+                code=str(exc) if isinstance(exc,RelayError) else 'invalid_request'
+                if stream_headers_sent:
+                    # HTTP 200 / SSE headers are already irrevocable. Sending
+                    # another HTTP status line would corrupt the event stream.
+                    self.wfile.write(('data: '+compact({'error':{
+                        'message':code,'type':'relay_error','code':code}})+'\n\n').encode())
+                    self.wfile.flush()
+                else:
+                    self.error(status,code)
             except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
                 abandoned=True
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
@@ -850,7 +1054,8 @@ def main():
                   playwright_key=playwright_key)
     print(compact({'ok':True,'port':server.server_address[1],'model':MODEL,
                    'playwright_route_enabled':server.enable_playwright,
-                   'default_transport':'extension','max_active_requests':1}),flush=True)
+                   'default_transport':'extension','max_active_requests':1,
+                   **startup_reconciliation_status(queue)}),flush=True)
     try:server.serve_forever()
     finally:server.server_close();queue.close()
 if __name__=='__main__':main()

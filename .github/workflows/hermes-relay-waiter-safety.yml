@@ -1,0 +1,41 @@
+name: Hermes Relay HTTP Waiter Safety
+
+on:
+  pull_request:
+    paths:
+      - "Hermes-WebGPT/relay.py"
+      - "Hermes-WebGPT/test_relay_waiter_capacity.py"
+      - "Hermes-WebGPT/test_relay_state_audit.py"
+      - "Hermes-WebGPT/docs/RELAY_WAITER_CAPACITY_SDD_20261122.md"
+      - ".github/workflows/hermes-relay-waiter-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-relay-waiters-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  relay-tests:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Syntax checks
+        run: python -m py_compile Hermes-WebGPT/relay.py Hermes-WebGPT/test_relay_waiter_capacity.py
+      - name: Focused unit and HTTP tests (local fixtures)
+        run: python -m unittest discover -s Hermes-WebGPT -p test_relay_waiter_capacity.py -v
+      - name: Atomic SQLite transition + migration tests
+        run: python -m unittest discover -s Hermes-WebGPT -p test_relay_state_audit.py -v
+      - name: Existing backend integration regression (local fixtures)
+        run: python -m unittest discover -s Hermes-WebGPT -p test_backend_quality.py -v
