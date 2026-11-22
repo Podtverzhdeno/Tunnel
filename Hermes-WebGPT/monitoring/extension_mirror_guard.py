@@ -114,7 +114,8 @@ def _validate_revision(root: Path, revision: str | None) -> bool:
         return False
     if not SHA_PATTERN.fullmatch(revision):
         raise EvidenceUnavailable("INVALID_SOURCE_REVISION")
-    paths = [str(folder / name) for folder in (SOURCE, COPY) for name in PAIR]
+    # Git pathspec and ls-files --zero consistently use POSIX separators, even on Windows.
+    paths = [(folder / name).as_posix() for folder in (SOURCE, COPY) for name in PAIR]
 
     def run_git(*args: str, text: bool = True):
         try:
