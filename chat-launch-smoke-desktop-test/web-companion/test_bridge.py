@@ -484,6 +484,82 @@ class ServerTests(unittest.TestCase):
         # Nothing contains a prompt, browser credentials or free-text values.
         self.assertTrue(all(set(e).issubset({"at","stage","reason"}) for e in events))
 
+    def test_unknown_send_cannot_be_erased_by_60_new_telemetry_events(self):
+        jid = "91234567-89ab-4cde-8901-23456789abcd"
+        (self.active / (jid + ".json")).write_text(json.dumps({
+            "id": jid, "completion_mode": "report",
+            "report_name": "completion-" + jid + ".md",
+        }), encoding="utf-8")
+        self.assertEqual(self.request("/v1/event", "POST", {
+            "id": jid, "stage": "unknown", "reason": "assistant_timeout",
+        })[0], 200)
+        for _ in range(75):
+            self.assertEqual(self.request("/v1/event", "POST", {
+                "id": jid, "stage": "editor_found",
+            })[0], 200)
+        # A newer send/saved pair must NOT erase the prior unsafe outcome.
+        self.request("/v1/event", "POST", {"id": jid, "stage": "send_clicked"})
+        self.request("/v1/event", "POST", {"id": jid, "stage": "message_saved"})
+        events = json.loads((self.diag / (jid + ".json")).read_text(encoding="utf-8"))
+        self.assertEqual(len(events), 60)
+        self.assertEqual(events[0]["stage"], "unknown")
+        self.assertEqual(events[-1]["stage"], "message_saved")
+        self.assertEqual(self.request("/v1/recover?id=" + jid)[1], {
+            "eligible": False, "reason": "needs_reconciliation",
+        })
+
+    def test_first_recovery_dispute_remains_when_newer_disputes_arrive(self):
+        early = {"at": "2026-11-22T01:00:00+00:00",
+                 "stage": "tab_identity_unverified"}
+        rows = [early]
+        for i in range(150):
+            stage = "tab_binding_disputed" if i == 90 else "editor_found"
+            rows = bridge.bounded_diagnostics(
+                rows, {"at": "2026-11-22T01:00:01+00:00", "stage": stage}
+            )
+        self.assertEqual(len(rows), 60)
+        self.assertEqual(rows[0], early)
+        self.assertTrue(bridge.is_recovery_blocker(rows[0]))
+        self.assertEqual(rows[-1]["stage"], "editor_found")
+
+    def test_tab_identity_and_auth_disputes_are_recovery_blockers(self):
+        jid = "21234567-89ab-4cde-8901-23456789abcd"
+        (self.active / (jid + ".json")).write_text(json.dumps({
+            "id": jid, "completion_mode": "report",
+            "report_name": "completion-" + jid + ".md",
+        }), encoding="utf-8")
+        for stage in ("send_clicked", "message_saved", "tab_identity_unverified"):
+            status, data = self.request("/v1/event", "POST", {
+                "id": jid, "stage": stage,
+            })
+            self.assertEqual(status, 200)
+        self.assertEqual(self.request("/v1/recover?id=" + jid)[1]["reason"],
+                         "needs_reconciliation")
+
+    def test_corrupted_diagnostic_log_is_never_silently_replaced(self):
+        jid = "31234567-89ab-4cde-8901-23456789abcd"
+        self.put(jid)
+        self.request("/v1/next")
+        target = self.diag / (jid + ".json")
+        for corrupt in ('{not-json', '{"stage":"unknown"}', '[1,2,3]'):
+            target.write_text(corrupt, encoding="utf-8")
+            status, reply = self.request("/v1/event", "POST", {
+                "id": jid, "stage": "editor_found",
+            })
+            self.assertEqual(status, 409)
+            self.assertEqual(reply["error"], "diagnostic_history_unreadable")
+            self.assertEqual(target.read_text(encoding="utf-8"), corrupt)
+
+    def test_sticky_event_format_does_not_expose_extra_data(self):
+        old = [{"at": "2026-11-22T00:00:00+00:00", "stage": "unknown",
+                "reason": "assistant_timeout"}]
+        for _ in range(100):
+            old = bridge.bounded_diagnostics(old, {"at": "2026-11-22T00:00:10+00:00",
+                                                    "stage": "editor_found"})
+        self.assertEqual(len(old), 60)
+        self.assertTrue(all(set(row) <= {"at", "stage", "reason"} for row in old))
+        self.assertEqual(old[0]["reason"], "assistant_timeout")
+
     def test_telemetry_denies_invalid_and_unknown(self):
         jid="01234567-89ab-4cde-8901-23456789abcd"
         self.assertEqual(self.request("/v1/event","POST",{"id":jid,"stage":"send_clicked"})[0],404)
