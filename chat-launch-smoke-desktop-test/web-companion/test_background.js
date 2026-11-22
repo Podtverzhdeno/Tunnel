@@ -466,6 +466,15 @@ async function send(ext,message,tabId){
   for(let j=0;j<65;j++)await new Promise(r=>setImmediate(r));
   assert.equal(scaled.tabs.size,25,"released slot refilled without exceeding cap");
   assert.equal(scaled.queue.length,4);
+  // Explicit resource-conserving profile with only two hydrated pages.
+  const eco=await simulate({count:10,realCap:true,profile:"eco"});
+  assert.equal(eco.tabs.size,1,"eco admits just one tab per poll");
+  for(let i=0;i<3;i++){
+    eco.events.alarm({name:"chat-smoke-queue"});
+    for(let j=0;j<65;j++)await new Promise(r=>setImmediate(r));
+  }
+  assert.equal(eco.tabs.size,2,"eco never exceeds two live worker tabs");
+  assert.equal(eco.queue.length,8,"eco leaves future work in queue");
   // Default resource profile: bound concurrent hydration to six live tabs.
   const balanced=await simulate({count:20,realCap:true,profile:"balanced"});
   assert.equal(balanced.tabs.size,2,"balanced admits two tabs per poll");
@@ -485,5 +494,5 @@ async function send(ext,message,tabId){
   assert.equal(last.tabs.size,1,"last normal window stays open");
   assert.equal(last.tabs.get(300).url,"about:blank","final tab parked with no ChatGPT JS");
   assert.equal(last.logs.filter(x=>x.type==="closed").length,0);
-  console.log("PASS: 25-tab max, balanced 6/2, last-window park, refill, isolation, ACK guards");
+  console.log("PASS: eco 2/1, balanced 6/2, 25-tab max, last-window park, refill, ACK guards");
 })().catch(e=>{console.error(e);process.exitCode=1});
