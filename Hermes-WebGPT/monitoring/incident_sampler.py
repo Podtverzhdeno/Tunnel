@@ -36,6 +36,26 @@ def _unknown(code='observer_unavailable'):
     return incident_triage.triage_report({'observation': 'unavailable', 'error': code})
 
 
+def _enable_wal(db, *, deadline_seconds=10.0):
+    """Serialize WAL startup opportunistically under concurrent Windows processes.
+
+    SQLite PRAGMA journal_mode can return SQLITE_BUSY immediately, even with a
+    busy_timeout, when another connection is creating its first WAL database.
+    Retry *only initialization*, never the observed external effect or Send.
+    """
+    deadline = time.monotonic() + deadline_seconds
+    while True:
+        try:
+            mode = db.execute('PRAGMA journal_mode=WAL').fetchone()
+            if not mode or str(mode[0]).lower() != 'wal':
+                raise SamplerError('journal_mode_not_wal')
+            return
+        except sqlite3.OperationalError as exc:
+            if 'locked' not in str(exc).lower() or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.025)
+
+
 def run_cycle(relay_db, journal_db, *, max_rows=10000, stale_seconds=600,
               latency_target_seconds=None, keep_events=2000, now=None):
     """Return a sanitized classification; persist snapshot and incident atomically.
@@ -67,7 +87,7 @@ def run_cycle(relay_db, journal_db, *, max_rows=10000, stale_seconds=600,
     try:
         with closing(sqlite3.connect(target, timeout=10, isolation_level=None)) as db:
             db.execute('PRAGMA busy_timeout=10000')
-            db.execute('PRAGMA journal_mode=WAL')
+            _enable_wal(db)
             db.execute('PRAGMA synchronous=FULL')
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS monitor_baseline (
