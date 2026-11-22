@@ -1,0 +1,29 @@
+name: Web Companion result state integrity tests
+
+on:
+  pull_request:
+    paths:
+      - "chat-launch-smoke-desktop-test/web-companion/bridge.py"
+      - "chat-launch-smoke-desktop-test/web-companion/test_bridge.py"
+      - ".github/workflows/bridge-result-state-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  corrupt-result:
+    name: Bridge result integrity (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Offline loopback bridge test suite
+        run: python -m unittest discover -s chat-launch-smoke-desktop-test/web-companion -p "test_bridge.py" -v
