@@ -205,6 +205,34 @@ class MirrorGateTests(unittest.TestCase):
         self.assertNotIn("bridge-config.json", json.dumps(evidence))
         self.assertNotIn("private-123", json.dumps(evidence))
 
+    def test_extra_installable_javascript_rejected(self):
+        (self.mirror / "unreviewed.js").write_text("/* injected */")
+        with self.assertRaisesRegex(g.UnsafeContract,
+                                    "INSTALLATION_PACKAGE_FILESET_CHANGED"):
+            g.inspect(self.root)
+
+    def test_extra_installable_directory_rejected(self):
+        (self.mirror / "runtime-extra").mkdir()
+        with self.assertRaisesRegex(g.UnsafeContract,
+                                    "INSTALLATION_PACKAGE_FILESET_CHANGED"):
+            g.inspect(self.root)
+
+    def test_private_config_stays_unread_and_optional(self):
+        path = self.mirror / "bridge-config.json"
+        path.write_text("DO NOT READ private token")
+        result = g.inspect(self.root)
+        self.assertEqual(result["files_verified"], 7)
+        self.assertNotIn("DO NOT READ", json.dumps(result))
+
+    def test_private_config_symlink_rejected_without_opening(self):
+        path = self.mirror / "bridge-config.json"
+        try:
+            path.symlink_to(self.root / "outside-secret")
+        except OSError:
+            self.skipTest("Symlinks unavailable")
+        with self.assertRaisesRegex(g.UnsafeContract, "INSTALLATION_CONFIG_SYMLINK"):
+            g.inspect(self.root)
+
     def test_no_path_leak_in_report(self):
         r = g.inspect(self.root)
         self.assertNotIn(str(self.root), json.dumps(r))
