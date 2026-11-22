@@ -190,3 +190,18 @@ OpenTelemetry GenAI Semantic Conventions плюс Weaver validator — **кан�
 - Acceptance fixtures: (a) dropped bridge POST after service worker local state write, (b) `ok:false` response after pre-click stage, (c) browser closes before click, (d) click occurs but completion ACK lost, (e) reconnect with stale worker lease, (f) two workers same action_key, (g) changed Chrome profile/account/tab/document, (h) event tail rolls over 60, (i) corrupt/partial observer log, (j) Telegram output ACK delayed. Any non-idempotent Send second execution fails the test.
 
 **Source provenance:** `Podtverzhdeno/Tunnel` main baseline `350ea33080bc35245aa6741f85fa926cc8a8fcaf`, checked ``background_content.js:17–24, 109–111`, ``background.js:129–139, 607–628`, ``bridge.py:395–450`. PR #10/#11/#14 may modify this; repeat review on final integrated SHA before trusting any fix.
+
+
+## 9. Взаимодействие lock, HTTP ingress и наблюдения за зависанием
+
+Проверка исходников main и PR #14 (без реального load test) выявляет риск **неограниченного pre-auth ingress**, который отличается от лимита одновременно живых агентских заявок:
+
+- `Hermes-WebGPT/relay.py`: базовый `ThreadingHTTPServer` порождает HTTP handler thread до проверки авторизации и до проверки `max_http_waiters` в PR #15. Ограничение attached waiters **не эквивалентно** ограничению новых TCP clients / slow-header connections.
+- `chat-launch-smoke-desktop-test/web-companion/bridge.py`: тот же `ThreadingHTTPServer` привязан к loopback `127.0.0.1:18763` и проверяет Host/`X-Chat-Smoke-Key` в `do_GET/do_POST`. Loopback существенно снижает внешнюю поверхность угроз, но множество локальных клиентов, не завершивших заголовки, может расходовать потоки **до** этой проверки.
+- Все операции claim/telemetry/ACK могут ждать глобальный `LOCK`. PR #14 добавляет `fsync` записи diagnostic JSON внутри глобальной блокировки, сохраняя noReplay-свидетельство, но увеличивает критический участок при больших 10/25/50 agent fanout. Без измерения нельзя утверждать ни наличие bottleneck, ни безопасный throughput.
+
+**Новый набор отдельных reason codes**: `HTTP_ACCEPT_QUEUE_FULL`, `HTTP_HANDLER_CAPACITY`, `BRIDGE_LOCK_WAIT`, `DIAGNOSTIC_FSYNC_SLOW`, `HTTP_WAITER_CAPACITY`, `BROWSER_CLAIM_CAPACITY`. Это взаимоисключающие диагностические слои, а не синоним `LLM_STALLED`. К каждому нужны количественные latency/active count + denied count с фиксированным sampling interval, без user prompt/body/header.
+
+**Фальсифицируемые тесты:** в изолированном Windows/Ubuntu инстансе открыть 100–200 медленных соединений без обязательных заголовков, затем выполнить один нормальный аутентифицированный health/ACK; доказать bounded handler threads, bounded memory и отсутствие starvation. Отдельно нагрузить 25 одновременных разрешённых, но metadata-only `/v1/event` с fsync и измерить lock wait p50/p95/max, ошибочные 503/429, потерю событий и сохранность самого раннего blocker. Разнести лимит приёма/обработки до создания потока и bounded journal writer, не держать один глобальный lock на дорогом fsync без анализа event ordering. Измерять CPU/RAM Windows Edge отдельно от очередей Relay.
+
+**План изменений:** назначить одному интегратору `bridge.py`, другому `relay.py`; не вводить HTTP web server под эгидой наблюдателя. Защищённый режим с admission cap и ограниченным временем чтения не должен отвергать уже зарегистрированный completion receipt/ACK или стирать состояние неопределённого Send. До подтверждения slow-client и fsync load tests этот риск остаётся `SOURCE_LEVEL_RISK_NOT_PROVEN_IN_RUNTIME`.
