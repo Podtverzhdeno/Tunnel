@@ -127,3 +127,40 @@ Work item должен быть неизменным контрактом: `task
 **Подтверждено на 2026-11-22:** тесты проверяют также невозможность перезаписать `bridge-config.json`, исходники JS, `.git` или внешний путь при записи JSON-отчёта.  локально проверено, что Git HEAD не может быть подменён валидно выглядящим SHA; незакоммиченные изменения в двух зеркалах делают результат недостоверным. Исходный репозиторий, PR #7/#8/#10/#11/#12/#13/#14 и file overlaps; mirror blob SHA семи файлов main; реальный click-before-stage порядок; 34 synthetic tests локально; отдельный read-only checker и workflow. **Не подтверждено:** загруженная локальная версия, запуск Edge/Web Companion, real browser/Telegram effects, сбой конкретной пользовательской сессии, стабильность объединённых PR, безопасность production. После каждого последующего изменения добавлять конкретный source SHA, проверку, реальную CI job, гипотезу, proof и owner, не отчёт «всё исправлено» без измерения.
 
 Основные связанные документы: [PR #13](https://github.com/Podtverzhdeno/Tunnel/pull/13), [PR #14](https://github.com/Podtverzhdeno/Tunnel/pull/14), [PR #10](https://github.com/Podtverzhdeno/Tunnel/pull/10), [PR #11](https://github.com/Podtverzhdeno/Tunnel/pull/11), [PR #8](https://github.com/Podtverzhdeno/Tunnel/pull/8). Не брать права из SDD и не активировать монитор, пока не подтверждён permission/host runtime.
+
+
+## 7. Внешняя верификация рисков — SQLite, Chrome MV3, GitHub Actions и OTel (2026-11-22)
+
+Это проверка фактов по **официальной документации**, а не наблюдение пользовательской Windows-машины или браузера. Не путать отдельные причины и уровни доказательств.
+
+### 7.1 SQLite: наблюдаемая ошибка и отдельный редкий риск целостности
+
+В соседнем PR #13 (head `d66a98ee908590bf529f9e6cafa7d0387925aad0`, GitHub Actions run 45016143604, Windows Python 3.13) подтверждён сбой: `test_samplers_serialize_without_losing_baseline_or_log` запускает 24 конкурирующих `run_cycle`; один `incident_sampler.py` упал на `PRAGMA journal_mode=WAL` с `sqlite3.OperationalError: database is locked`. Ubuntu и Windows3.11 тесты в этом запуске прошли, но это не отменяет Windows3.13 ошибку. Из исходников видно: настройка WAL и `CREATE TABLE IF NOT EXISTS` выполняются **до** `BEGIN IMMEDIATE` и повторяются в каждом цикле. Сериализация внутри транзакции не защищает инициализацию.
+
+SQLite документирует, что `journal_mode=WAL` сохраняется для последующих соединений. Гипотеза исправления: вынести WAL/DDL в идемпотентную сериализованную инициализацию; обычный цикл — только read-only sampling плюс атомарное `BEGIN IMMEDIATE` обновление incident/baseline. Отдельно классифицировать `journal_schema_lock_busy` и `relay_send_unknown`: локальный безопасный повтор открытия SQLite БД **не разрешает** повторять ChatGPT Send. Многократно проверять Windows3.13 на 24–50 наблюдателях с сохранением количества/порядка записей после restart. Источник: https://www.sqlite.org/wal.html#persistence_of_wal_mode
+
+**Другой, очень редкий риск:** официальная SQLite WAL Documentation `11 описывает WAL-reset race с риском порчи данных у нескольких соединений на одной БД в разных потоках или процессах при конкурентной записи/checkpoint. Документация указывает вероятно затронутые версии `3.7.0..3.51.2`, исправление в `3.51.3+`, backports `3.44.6` и `3.50.7`. Разработчики подчёркивают низкую вероятность: нельзя приписывать зафиксированное `database is locked` этому редкому дефекту и нельзя объявлять пользовательскую БД повреждённой. Но перед 50-агентным запуском проверить `sqlite3.sqlite_version` и provenance SQLite **каждого реального runtime** (Relay, sampler, Windows Python, CI и упакованный binary), включая vendor backports. Для нескольких конкурентных writer-процессов выбрать исправленную сборку и тестировать commit/checkpoint с реальным файловым хранилищем. Источник: https://www.sqlite.org/wal.html#the_wal_reset_bug
+
+**Долговременность:** `-wal` является частью состояния БД. Одиночная копия `*.db` при активном writer ненадёжна; использовать SQLite backup API или согласованный checkpoint/quiescence, не удалять `-wal/-shm` вручную. Проверять `PRAGMA synchronous`: при WAL `FULL` синхронизирует каждый commit, `NORMAL` допускает потерю последних операций после power loss. Не размещать SQLite WAL на общем SMB/NFS для разных машин. Источники: https://www.sqlite.org/wal.html#the_wal_file ; https://www.sqlite.org/wal.html#performance_considerations ; https://www.sqlite.org/wal.html#overview
+
+### 7.2 Chrome MV3: service worker lifecycle не доказывает состояние модели
+
+Chrome MV3 worker штатно завершается после **30 секунд неактивности**; глобальные JS переменные при остановке теряются, а другие виды запросов имеют отдельные лимиты. Это не самодиагностируемый сбой ChatGPT. Recovery должен читать durable Relay/bridge owner binding, проверять уже отправленный user turn и сверять source_seq + последний внешний эффект **до нового действия**. Не удерживать worker бессмысленно активным и не трактовать потерю heartbeat как разрешение нового Send. Источник: https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle
+
+### 7.3 GitHub PR: различать два SHA
+
+По GitHub Docs `GITHUB_SHA` для workflow события `pull_request` указывает обычно **синтетический merge commit** `refs/pull/N/merge`, а `github.event.pull_request.head.sha` — последний реальный коммит PR. `actions/checkout` по умолчанию проверяет объединённое состояние. Наш `extension_mirror_guard --revision "$GITHUB_SHA"` сравнивает с фактическим `git HEAD` checkout, то есть проверяемого merge ref, что корректно для интеграции. В дальнейших отчётах нужно явно иметь `pr_head_sha` (триггер), `tested_git_sha` (реальный checkout), `base_sha`; нельзя путать metadata `workflow_run.head_sha` и действительно запущенный checkout SHA. При изменении любого входа перепроверка обязательна. Источник: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request
+
+### 7.4 Наблюдение должно иметь один authoritative stream
+
+OpenTelemetry GenAI Semantic Conventions плюс Weaver validator — **кандидат** для проверки формата уже существующего event stream, а не новый авторитетный scheduler или queue. Статья OTel (ноябрь 2026) использует Weaver для missing_attribute, type_mismatch и policy, отчёт с violation блокирует acceptance. Можно применить при изолированном протоколе без передачи prompt, DOM, cookie, personal messages, raw tool args и bearer. Сначала измерить cardinality, стоимость и scoped consent. Источник: https://opentelemetry.io/blog/2026/agent-harness-genai-instrumentation/
+
+### 7.5 Приоритеты подтверждения
+
+1. Узнать фактические SQLite версии и WAL/synchronous на Windows и CI, устранить воспроизведённый #13 lock через однократную контролируемую инициализацию.
+2. Назначить одного владельца пересекающихся PR #10/#11, проверить оба зеркала на combined merge SHA, затем интеграционные сценарии.
+3. Спроектировать и после независимого security/host approval выполнить durable pre-click ACK, fenced effect identity, at-most-one unsafe attempt, read-back; не ускорять 25 вкладок прежде безопасности.
+4. Тестировать MV3 stop/restart, потерю ACK после click, аккаунт/вкладку и независимый Telegram receipt.
+5. Только после этого — проверку event schema, p95, нагрузку 10/30/50 логических агентов и поэтапный supervised rollout.
+
+Ни 40 mirror-тестов, ни этот SQLite source audit **не подтверждают** состояние текущей Windows-инсталляции, отправку ChatGPT или доставку Telegram. Уровень доказательства: `SOURCE_VERIFIED/CI_VERIFIED`; `RUNTIME/USER_EFFECT_UNKNOWN`.
