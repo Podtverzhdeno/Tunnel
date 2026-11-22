@@ -135,6 +135,26 @@ async function send(ext,message,tabId){
   throttled.events.alarm({name:"chat-smoke-queue"});
   for(let i=0;i<60;i++)await new Promise(r=>setImmediate(r));
   assert.equal(throttled.tabQueries(),2,"recovery runs when bounded interval expires");
+  const manual=await simulate({count:0});
+  const temporaryResponse=await new Promise(resolve=>{
+    const handled=manual.events.message(
+      {type:"chat-smoke-open-temporary"},{},resolve);
+    assert.equal(handled,true,"only popup can request a temporary tab");
+  });
+  assert.equal(temporaryResponse.ok,true);
+  assert.equal(temporaryResponse.temporary_ui_verified,false,
+    "opening an URL must not be misrepresented as verified Temporary mode");
+  assert.equal(manual.tabs.size,1,"manual action opens exactly one new tab");
+  const newTab=[...manual.tabs.values()][0];
+  assert.equal(newTab.url,"https://chatgpt.com/?temporary-chat=true",
+    "manual temporary launch uses exact requested URL");
+  assert.equal(newTab.active,true,"user explicitly requested foreground tab");
+  assert.equal(manual.logs.filter(x=>x.type==="opened").length,1);
+  assert.equal(manual.results.length,0,"opening a tab does not send a model request");
+  const denied=manual.events.message(
+    {type:"chat-smoke-open-temporary"},{tab:{id:300}},()=>{});
+  assert.equal(denied,undefined,"web content scripts cannot open a new session");
+  assert.equal(manual.tabs.size,1,"unauthorized sender cannot create more tabs");
   const ext=await simulate();
   assert.equal(ext.tabs.size,2);
   assert.equal(ext.logs.filter(x=>x.type==="opened"&&x.active===false).length,2);
