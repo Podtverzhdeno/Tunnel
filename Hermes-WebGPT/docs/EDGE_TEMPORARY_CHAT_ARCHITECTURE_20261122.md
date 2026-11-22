@@ -16,7 +16,13 @@ R4. Не считать найденную вкладку принадлежащ
 
 ## 1. Проверенные факты исходного кода
 
-F01. Основное расширение v0.6.6 лежит в chat-launch-smoke-desktop-test/web-companion; web-extension — зеркальный каталог загружаемого расширения. manifest v3, background.service_worker, разрешения tabs/storage/scripting/alarms и доступ только к loopback bridge + chatgpt.com.
+**Критическое разграничение продуктов (добавлено при повторном аудите):**
+- `chat-launch-smoke-desktop-test/web-companion` — **старый smoke/test transport v0.6.6**, отдельный loopback bridge :18763; изменения в нём не обновляют действующий транспорт Hermes.
+- Реальный Hermes/WebGPT использует `Hermes-WebGPT/relay.py` (Relay :18765) и расширение `hermes_relay_bg.js` / `hermes_relay_content.js`. Проверенные опубликованные **снимки отдельных компонентов** находятся в `Hermes-WebGPT/patches/manual-draft-20261110/` и `Hermes-WebGPT/patches/send-confirmation-20261111/`; документация говорит о рабочем Web Companion **0.9.7** на Windows, но утверждать, что локальная установка всё ещё работает именно на этих SHA, без её чтения нельзя.
+- Логика настоящего Hermes BG открывает `https://chatgpt.com/#hermes-relay=<job_id>`, а не Temporary Chat, и после подтверждённого результата вызывает `chrome.tabs.remove(task.tabId)`. Настоящий Hermes content уже проверяет Relay intent и noReplay, но `saved`/result в BG и Relay зависят от `/c/` URL.
+- Поэтому настоящий production fix требует версионированного перепроектирования **Hermes Relay + BG + content + profile ownership**. Исправления legacy smoke полезны лишь для самостоятельного тестового слоя. Не смешивать версии, не публиковать автоматический transport на основе smoke.
+
+F01. Тестовое расширение v0.6.6 лежит в chat-launch-smoke-desktop-test/web-companion; web-extension — зеркальный каталог загружаемого расширения. manifest v3, background.service_worker, разрешения tabs/storage/scripting/alarms и доступ только к loopback bridge + chatgpt.com.
 
 F02. background.js dispatch открывает НЕ временный URL: https://chatgpt.com/#chat-launch-smoke=bg-<uuid>. background_content.js определяет owned job по hash в корне /, затем ожидает /c/... и сохранённое сообщение.
 
@@ -224,3 +230,26 @@ powershell -NoProfile -File .\Hermes-WebGPT\Benchmark-Hermes-Edge.ps1 -Scenario 
 ## 16. Дополнительная архитектурная мера против уничтожения процесса
 
 Если в Windows подтверждён H4 — браузер наследует Job Object с флагом завершения дочерних процессов после окончания Hermes tool/worker, — обычный `Start-Process` может оказаться недостаточно независимым. Тогда отдельный **явно установленный владельцем интерактивный Task Scheduler task** может запускать isolated Edge вне дочернего job tree Hermes. Без такой диагностики не регистрировать автозапуск/постоянную задачу на пользовательском ПК: это системная персистентная настройка и требует отдельного согласованного изменения. Нельзя лечить процессный kill бесконечными автоперезапусками: при Temporary Chat это создаст потерю контекста и риск повторной отправки.
+
+## 17. Re-audit: текущий Hermes (Web Companion 0.9.7), отличия от тестового слоя
+
+Источники: `Hermes-WebGPT/README.md`, `Hermes-WebGPT/relay.py`, `Hermes-WebGPT/patches/manual-draft-20261110/README.md`, `Hermes-WebGPT/patches/manual-draft-20261110/hermes_relay_bg.js`, `Hermes-WebGPT/patches/send-confirmation-20261111/hermes_relay_content.js`. Снимки компонентов **НЕ являются полным устанавливаемым расширением** (нет проверенного исходного `manifest`, конфигурации и прочих рабочих JS-файлов). Для выпуска необходима SHA-сверка с установленной копией; её статус в этом чате недоступен.
+
+### Наблюдаемые архитектурные ошибки
+
+- `hermes_relay_bg.js` строки около 308: одна неактивная вкладка в уже существующем окне, **обычный чат** с hash-маркером. Это не ошибка параметра в launcher, это отдельный конкретный launch path, который надо менять в новом Hermes transport.
+- `hermes_relay_bg.js` строки около 391–396, 412–423: `message_saved` передаёт `/c/` URL Relay, `finished` проверяет равенство URL и вызывает `chrome.tabs.remove` только после `done`; это может закрыть последнюю вкладку окна, но само по себе не доказывает крах `msedge.exe`.
+- `hermes_relay_content.js` строки около 250–291: `intent` защищён read-only проверками и ровно одним click; защиту **нельзя** удалять при переходе на Temporary.
+- Последнее подтверждение `saved` и `done` содержится в реальном `Hermes-WebGPT/relay.py`, который принимает только URL `https://chatgpt.com/c/<id>`. Простая замена адреса запуска на `?temporary-chat=true` оставляет result pipeline несогласованным и может заблокировать/неправильно классифицировать фактический Send.
+- В новых patch snippets «temporary tab» означает кратковременную рабочую вкладку и **не** означает официальный Temporary Chat в ChatGPT; эту двусмысленность следует удалить из комментариев новой версии.
+
+### Release gate для настоящего Hermes
+
+G0. Установленный source revision измерен, совпадает с ожидаемым исходным SHA; есть откат.
+G1. Hermes BG больше не вызывает legacy `/#hermes-relay` в режиме Temporary, но использует точный `?temporary-chat=true`.
+G2. Перед любой отправкой UI-верификатор подтверждает режим Temporary и ownership того же `documentId`, в том же профиле и вкладке; при недоступной верификации — отказ без Send.
+G3. Relay принимает версионированный opaque временный session receipt без обязательного `/c/` и не смешивает его с legacy URL proof.
+G4. После result ACK сессия живёт, `chrome.tabs.remove` только по явно выбранной политике и только при подтверждённой принадлежности. Без подтверждённого result или при смене аккаунта вкладка сохраняется.
+G5. CI + Windows live E2E подтверждают, что отдельный Edge-процесс и вкладка переживают завершение инструмента или CDP detach. Никаких заявлений об исправленном process kill до подтверждения этого теста.
+
+**Вывод:** this PR is an exploratory, fail-closed engineering step. Реальный Hermes transport v0.9.7 остаётся на legacy path; переход на Temporary и снижение CPU на реальном устройстве НЕ подтверждены.
