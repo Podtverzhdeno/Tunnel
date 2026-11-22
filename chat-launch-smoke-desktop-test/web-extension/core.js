@@ -5,6 +5,8 @@ const HASH="#chat-launch-smoke=v1";
 const PROMPT="Тест нового чата через локальный веб-компаньон. Ответь одним словом: ПРИНЯТО.";
 const EDITORS=["#prompt-textarea","[data-testid='composer-input']",".ProseMirror",
   "[data-lexical-editor]","[contenteditable]","textarea","[role='textbox']"];
+const ROOT_CACHE_TTL_MS=1500;
+let rootsCache=null;
 const SEND_BUTTONS=["button[data-testid='send-button']","button[data-testid='composer-send-button']",
   "button[aria-label='Send prompt']","button[aria-label='Send message']",
   "button[aria-label='Отправить сообщение']","button[aria-label='Отправить']",
@@ -23,6 +25,13 @@ function isVisible(el){
   return !r||(r.width>1&&r.height>1);
 }
 function roots(doc){
+  // Parsing every DOM node on each 300ms wait tick is expensive with several
+  // running ChatGPT tabs. Cache only the shadow-root DISCOVERY, not editor or
+  // button choices; those are still checked fresh on every invocation.
+  // Short TTL allows newly hydrated Shadow DOM to be found without a reload.
+  const now=Date.now();
+  if(rootsCache&&rootsCache.doc===doc&&rootsCache.expires>now)
+    return rootsCache.value;
   const rs=[doc],seen=new Set(rs);
   for(let i=0;i<rs.length&&i<12;i++){
     const r=rs[i];
@@ -36,6 +45,7 @@ function roots(doc){
       if(rs.length>=12)break;
     }
   }
+  rootsCache={doc,expires:now+ROOT_CACHE_TTL_MS,value:rs};
   return rs;
 }
 function findEditor(doc){

@@ -39,3 +39,19 @@ resume.addEventListener("click",async()=>{
     circuit.textContent="Ошибка связи с фоновым обработчиком.";
   }
 });
+const temporaryButton=document.getElementById("openTemporary");
+const temporaryState=document.getElementById("temporaryState");
+temporaryButton.addEventListener("click",async()=>{
+  temporaryButton.disabled=true;
+  temporaryState.textContent="Запрашиваю новую временную вкладку…";
+  try{
+    const result=await chrome.runtime.sendMessage({type:"chat-smoke-open-temporary"});
+    temporaryState.textContent=result?.ok?
+      "Вкладка открыта. Проверьте, что интерфейс ChatGPT показывает временный режим. Hermes не отправлял сообщение.":
+      "Не удалось открыть вкладку: "+(result?.reason||"ошибка браузера");
+  }catch(_){
+    temporaryState.textContent="Фоновый обработчик расширения недоступен.";
+  }finally{
+    temporaryButton.disabled=false;
+  }
+});

@@ -1,0 +1,87 @@
+name: Hermes Edge Temporary — safe source checks
+on:
+  pull_request:
+    paths:
+      - "Hermes-WebGPT/**"
+      - "chat-launch-smoke-desktop-test/web-companion/**"
+      - "chat-launch-smoke-desktop-test/web-extension/**"
+      - ".github/workflows/hermes-edge-temporary-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check node and Python versions
+        run: |
+          node --version
+          python3 --version
+      - name: JS selector and Shadow DOM regression
+        run: node chat-launch-smoke-desktop-test/web-companion/test_core.js
+      - name: JS browser content send/ack regression
+        run: node chat-launch-smoke-desktop-test/web-companion/test_background_content.js
+      - name: JS queue throttling and orphan recovery regression
+        run: |
+          node chat-launch-smoke-desktop-test/web-companion/test_background.js
+          node chat-launch-smoke-desktop-test/web-companion/test_recovery.js
+          node chat-launch-smoke-desktop-test/web-companion/test_popup_temporary.js
+      - name: Hermes 0.9.7 true-transport fail-closed fixture
+        run: node Hermes-WebGPT/patches/edge-temporary-20261122/test_hermes_bg_fail_closed.cjs
+      - name: Hermes v2 MutationObserver CPU wake budget (synthetic)
+        run: node Hermes-WebGPT/patches/edge-temporary-20261122/test_dom_reconcile_budget.cjs
+      - name: Compare packaged and source extension code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("chat-launch-smoke-desktop-test")
+          for name in ("core.js", "background_content.js", "background.js", "popup.js", "popup.html"):
+              a = (root / "web-companion" / name).read_bytes()
+              b = (root / "web-extension" / name).read_bytes()
+              if a != b:
+                  raise SystemExit(f"extension_source_mirror_mismatch: {name}")
+              print(f"Extension mirror PASS: {name}")
+          PY
+      - name: Edge safety contract and Hermes synthetic Python tests
+        run: python3 -m unittest discover -s Hermes-WebGPT -p 'test_*.py' -v
+
+  windows-powershell-syntax:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Windows PowerShell 5.1 scripts (no execution)
+        shell: powershell
+        run: |
+          $files = @(
+            'Hermes-WebGPT/Start-Hermes-Edge-Temporary.ps1',
+            'Hermes-WebGPT/Measure-Hermes-Edge-CPU.ps1',
+            'Hermes-WebGPT/Benchmark-Hermes-Edge.ps1',
+            'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1',
+            'Hermes-WebGPT/Watch-Hermes-Edge-Lifetime.ps1',
+            'Hermes-WebGPT/Inspect-Hermes-Extension.ps1',
+            'Hermes-WebGPT/Test-Hermes-Extension-Provenance.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $resolved = (Resolve-Path -LiteralPath $file).Path
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $resolved, [ref]$tokens, [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Error
+              throw "invalid_powershell_syntax: $file"
+            }
+            Write-Host "PS51 parse PASS: $file"
+          }
+      - name: Validate synthetic CPU/RAM percentiles without launching Edge
+        shell: powershell
+        run: |
+          & 'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1'
+      - name: Validate redacted installed extension SHA provenance (synthetic)
+        shell: powershell
+        run: |
+          & 'Hermes-WebGPT/Test-Hermes-Extension-Provenance.ps1'

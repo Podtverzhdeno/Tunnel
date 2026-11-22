@@ -13,11 +13,14 @@
   const normalize=text=>String(text||"").replace(/\s+/g," ").trim();
   const savedChat=()=>/^\/c\/[0-9a-z-]+(?:\/|$)/.test(location.pathname);
   async function stage(value,reason=""){
-    try{await chrome.runtime.sendMessage({
-      type:"chat-smoke-stage",id:jobId,stage:value,reason,
-      url: /^https:\/\/chatgpt\.com\/c\/[0-9a-z-]+/.test(location.href)?
-        location.href:""
-    });}catch(_){}
+    try{
+      const ack=await chrome.runtime.sendMessage({
+        type:"chat-smoke-stage",id:jobId,stage:value,reason,
+        url: /^https:\/\/chatgpt\.com\/c\/[0-9a-z-]+/.test(location.href)?
+          location.href:""
+      });
+      return ack?.ok===true;
+    }catch(_){return false;}
   }
   async function waitFor(fn,timeout){
     const deadline=Date.now()+timeout;
@@ -113,22 +116,35 @@
     const deadline=Date.now()+Math.max(90000,Math.min(300000,
       (Number.isInteger(task.minHoldSeconds)?task.minHoldSeconds:5)*1000+90000));
     let committedAt=0,answer="",stableSince=0,wasCommitted=false;
+    let savedStageAcked=false;
     while(Date.now()<deadline){
       // A saved /c/ route can coexist with an account-change failure toast.
       // Never treat that DOM route alone as proof of server acceptance.
       if(accountConflict()){await rejectAccountConflict();return;}
+      if(completionMode && savedStageAcked){
+        // Continue checking account/session alerts at a low cadence, without
+        // repeatedly walking the full message DOM or hydrating the editor.
+        // Ending this script immediately would lose post-send account checks.
+        await nap(5000);
+        continue;
+      }
       if(seenUserMessage(head)){
         if(!committedAt){
           committedAt=Date.now();wasCommitted=true;
-          await stage("message_saved");
+          savedStageAcked=await stage("message_saved");
         }
       }
       if(wasCommitted){
         if(completionMode){
-          // Retain the ChatGPT tab until the local bridge validates an
-          // external MCP report and returns a durable scoped ACK.
-          // A visible assistant answer is NOT a completion certificate.
-          await nap(500);
+          // Once the background worker has ACKed the saved-message binding,
+          // there is no reason to scan the entire ChatGPT DOM twice/second.
+          // The service worker independently awaits the durable scoped report
+          // ACK and owns tab closure. This content script must NOT close it.
+          if(savedStageAcked){await nap(5000);continue;}
+          // On a lost handoff response retry ONLY the saved-stage evidence,
+          // never the already-clicked Send. Rate-limit this fallback.
+          savedStageAcked=await stage("message_saved");
+          await nap(1500);
           continue;
         }
         const assistants=document.querySelectorAll(
@@ -161,7 +177,7 @@
     if(completionMode && wasCommitted){
       // Signal no terminal result: the background service worker owns the
       // report ACK lifecycle, including the case where this script exits.
-      await stage("message_saved");
+      if(!savedStageAcked)await stage("message_saved");
       return;
     }
     await report("unknown",wasCommitted?"assistant_timeout":"user_message_not_confirmed");

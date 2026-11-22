@@ -20,6 +20,10 @@ const CAP=25;
 const CLAIMS_PER_POLL=4;
 const UI_COOLDOWN_MS=90000;
 const MAX_UI_PROBE_FAILURES=2;
+// The extension alarm runs every 30s; repeating a full ChatGPT DOM probe
+// for every alarm wastes CPU and inspects unrelated tabs without new evidence.
+const RECOVERY_SCAN_GAP_MS=120000;
+const RECOVERY_SCAN_KEY="chatSmokeLastRecoveryScanAt";
 let runningPoll=null;
 let circuitMutation=Promise.resolve();
 // Serialize state transitions across concurrent completion callbacks.
@@ -336,6 +340,21 @@ async function recoverOrphanedTabs(){
     catch(_){/* Recovery remains fail-closed if diagnostics are offline. */}
   }
 }
+// Keep the last scan in session storage: MV3 workers are regularly stopped,
+// so a process-global timestamp would reset on almost every alarm.
+// This budget affects ONLY orphan discovery, never job ACKs or closures.
+async function recoverOrphansIfDue(){
+  const state=await chrome.storage.session.get(RECOVERY_SCAN_KEY);
+  const last=state?.[RECOVERY_SCAN_KEY];
+  const now=Date.now();
+  if(Number.isFinite(last)&&last<=now&&now-last<RECOVERY_SCAN_GAP_MS)return false;
+  // Persist before asynchronous work: two wake-ups cannot schedule a second
+  // browser-wide scan immediately after this one. A failed scan is retried
+  // on the next due interval; all active jobs remain queued for ACK polling.
+  await chrome.storage.session.set({[RECOVERY_SCAN_KEY]:now});
+  await recoverOrphanedTabs();
+  return true;
+}
 async function listActive(){
   const values=await chrome.storage.session.get(null);
   return Object.entries(values).filter(([key,v])=>
@@ -483,7 +502,7 @@ async function dispatch(job,windowId){
 async function poll(){
   if(runningPoll)return runningPoll;
   runningPoll=(async()=>{
-    try{await recoverOrphanedTabs();}
+    try{await recoverOrphansIfDue();}
     catch(e){console.warn("Task recovery unavailable:",String(e));}
     const current=await listActive();
     for(const task of current){
@@ -569,7 +588,26 @@ async function poll(){
   return runningPoll;
 }
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
-  if(message?.type==="chat-smoke-resume" && !sender.tab){
+  if(message?.type==="chat-smoke-open-temporary" && !sender?.tab){
+    // User-initiated popup command only. Never automate Send, create a
+    // permanent chat or claim any Hermes job through this UI affordance.
+    (async()=>{
+      const windows=await chrome.windows.getAll({windowTypes:["normal"]});
+      const win=windows.find(x=>Number.isInteger(x.id));
+      if(!win){sendResponse({ok:false,reason:"no_browser_window"});return;}
+      const tab=await chrome.tabs.create({
+        windowId:win.id,
+        url:"https://chatgpt.com/?temporary-chat=true",
+        active:true
+      });
+      sendResponse({
+        ok:Number.isInteger(tab?.id),
+        temporary_ui_verified:false
+      });
+    })().catch(()=>sendResponse({ok:false,reason:"tab_open_failed"}));
+    return true;
+  }
+  if(message?.type==="chat-smoke-resume" && !sender?.tab){
     (async()=>{
       await chrome.storage.session.set({
         chatSmokeCircuit:{failures:0,paused:false}
