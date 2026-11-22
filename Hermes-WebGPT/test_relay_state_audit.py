@@ -1,5 +1,8 @@
 """Atomic SQLite transition journal tests with no browser, provider, or secrets."""
 import json
+import http.client
+import threading
+from contextlib import closing
 import os
 import sqlite3
 import tempfile
@@ -127,6 +130,58 @@ class AuditTransitionTests(unittest.TestCase):
                 self.assertEqual(a.state_event_tail()["events"],
                                  b.state_event_tail()["events"])
             finally:a.close();b.close()
+
+    def test_authenticated_cursor_feed_and_safe_paging(self):
+        ident=self.q.submit(req(),turn_id="turn-audit-fixture-0080")
+        job=self.q.claim(str(uuid.uuid4()))
+        server=relay.Server(("127.0.0.1",0),self.q,"synthetic-owner-key",timeout=2)
+        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread.start()
+        def call(path,auth=True):
+            with closing(http.client.HTTPConnection(*server.server_address,timeout=3)) as conn:
+                headers=({"Authorization":"Bearer synthetic-owner-key"} if auth else {})
+                conn.request("GET",path,headers=headers)
+                response=conn.getresponse()
+                return response.status,json.loads(response.read())
+        try:
+            self.assertEqual(401,call("/bridge/audit?after=0&limit=1",False)[0])
+            first_status,first=call("/bridge/audit?after=0&limit=1")
+            self.assertEqual(200,first_status)
+            self.assertEqual(1,len(first["events"]))
+            self.assertTrue(first["has_more"])
+            self.assertEqual("queued",first["events"][0]["new_state"])
+            self.assertEqual(1,first["next_seq"])
+            second_status,second=call("/bridge/audit?after=1&limit=1")
+            self.assertEqual(200,second_status)
+            self.assertEqual("claimed",second["events"][0]["new_state"])
+            self.assertFalse(second["has_more"])
+            self.assertEqual(2,second["next_seq"])
+            self.assertNotIn("SYNTHETIC_PRIVATE_PROMPT",json.dumps(first))
+            self.assertNotIn(ident,json.dumps(first))
+            self.assertNotIn(job["lease"],json.dumps(first))
+            for bad in ("/bridge/audit?after=x&limit=1",
+                        "/bridge/audit?after=0&limit=0",
+                        "/bridge/audit?after=0&limit=501",
+                        "/bridge/audit?after=0&limit=1&foo=secret"):
+                with self.subTest(path=bad):
+                    self.assertEqual(400,call(bad)[0])
+        finally:
+            server.shutdown()
+            thread.join(timeout=3)
+            server.server_close()
+
+    def test_empty_cursor_preserves_offset_and_rejects_bad_numbers(self):
+        self.q.submit(req(),turn_id="turn-audit-fixture-0081")
+        empty=self.q.state_events_since(after_seq=10,limit=1)
+        self.assertEqual([],empty["events"])
+        self.assertEqual(10,empty["next_seq"])
+        self.assertFalse(empty["has_more"])
+        for bad in (dict(after_seq=-1),dict(after_seq=True),
+                    dict(after_seq=2**80),dict(limit=0),dict(limit=True),
+                    dict(limit=501)):
+            with self.subTest(bad=bad),self.assertRaisesRegex(
+                    relay.RelayError,"invalid_audit_cursor"):
+                self.q.state_events_since(**bad)
 
     def test_queue_full_rolls_back_without_phantom_event(self):
         for n in range(5):
