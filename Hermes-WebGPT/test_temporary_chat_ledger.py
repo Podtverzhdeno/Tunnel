@@ -118,6 +118,18 @@ class TemporaryChatLedgerTests(unittest.TestCase):
                 self.store.prepare_request(self.sid, rid, tab, epoch, profile)
         self.assertEqual(self.store.status(self.sid)["state"], "TEMP_VERIFIED")
 
+    def test_one_tab_cannot_be_owned_by_two_sessions(self):
+        second_sid = new_uuid()
+        self.store.create_session(second_sid, self.profile)
+        with self.assertRaisesRegex(SessionConflict, "browser_tab_already_owned"):
+            self.store.bind_tab(second_sid, self.tab, self.window, new_uuid(),
+                                TEMPORARY_URL, self.profile)
+        self.assertEqual(self.store.status(second_sid)["state"], "CREATED")
+        # A distinct tab in the same browser profile is eligible.
+        self.store.bind_tab(second_sid, self.tab + 1, self.window, new_uuid(),
+                            TEMPORARY_URL, self.profile)
+        self.assertEqual(self.store.status(second_sid)["state"], "ATTACHED")
+
     def test_request_uuid_cannot_be_reused_across_sessions(self):
         self.verify()
         rid = new_uuid()
