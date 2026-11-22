@@ -382,8 +382,9 @@ async function dropTask(id){
 async function releaseManagedTab(job){
   const tab=await chrome.tabs.get(job.tabId);
   if(!tab||!Number.isInteger(tab.windowId)||typeof tab.url!=="string")return "preserved";
+  const expectedSaved=canonicalChatUrl(job.savedUrl);
   const eligible=job.completionMode?
-    canonicalChatUrl(tab.url)===canonicalChatUrl(job.savedUrl):
+    !!expectedSaved&&canonicalChatUrl(tab.url)===expectedSaved:
     tab.url.startsWith("https://chatgpt.com/");
   if(!eligible)return "preserved";
   const windows=await chrome.windows.getAll({windowTypes:["normal"]});
