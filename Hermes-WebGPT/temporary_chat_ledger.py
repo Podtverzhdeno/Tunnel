@@ -81,6 +81,8 @@ class TemporaryChatLedger:
                     created REAL NOT NULL,
                     updated REAL NOT NULL
                 );
+                CREATE UNIQUE INDEX IF NOT EXISTS session_tab_exclusive
+                    ON session(profile_nonce,tab_id) WHERE tab_id IS NOT NULL;
                 CREATE INDEX IF NOT EXISTS request_session ON request(session_id);
                 CREATE UNIQUE INDEX IF NOT EXISTS request_user_evidence_unique
                     ON request(evidence_nonce) WHERE evidence_nonce IS NOT NULL;
@@ -164,11 +166,14 @@ class TemporaryChatLedger:
             row = self._session(con, sid, "CREATED")
             if row[1] != _nonce(profile_nonce):
                 raise SessionConflict("wrong_browser_profile")
-            con.execute(
-                "UPDATE session SET tab_id=?,window_id=?,document_epoch=?,"
-                "state='ATTACHED',updated=? WHERE id=?",
-                (tab_id, window_id, epoch, time.time(), sid)
-            )
+            try:
+                con.execute(
+                    "UPDATE session SET tab_id=?,window_id=?,document_epoch=?,"
+                    "state='ATTACHED',updated=? WHERE id=?",
+                    (tab_id, window_id, epoch, time.time(), sid)
+                )
+            except sqlite3.IntegrityError:
+                raise SessionConflict("browser_tab_already_owned") from None
 
     def attest_ui(self, session_id, tab_id, document_epoch, profile_nonce, *, ui_verified, proof_nonce):
         """Accept provenance only from a trusted real UI adapter; not URL-derived.
