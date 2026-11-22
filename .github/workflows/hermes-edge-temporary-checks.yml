@@ -29,3 +29,29 @@ jobs:
           node chat-launch-smoke-desktop-test/web-companion/test_recovery.js
       - name: Edge safety contract and Hermes synthetic Python tests
         run: python3 -m unittest discover -s Hermes-WebGPT -p 'test_*.py' -v
+
+  windows-powershell-syntax:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Windows PowerShell 5.1 scripts (no execution)
+        shell: powershell
+        run: |
+          $files = @(
+            'Hermes-WebGPT/Start-Hermes-Edge-Temporary.ps1',
+            'Hermes-WebGPT/Measure-Hermes-Edge-CPU.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            $resolved = (Resolve-Path -LiteralPath $file).Path
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $resolved, [ref]$tokens, [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Error
+              throw "invalid_powershell_syntax: $file"
+            }
+            Write-Host "PS51 parse PASS: $file"
+          }
