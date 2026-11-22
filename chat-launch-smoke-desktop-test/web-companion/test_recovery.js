@@ -13,7 +13,7 @@ const textFor=id=>"Ты независимый исследователь Comple
   id+".md. Job ID: "+id+", затем заголовки ## Outcome и ## Evidence.";
 
 async function setup({tabs=[],eligibility=[],acks={},paused=false,initialLocal={},closure={}}={}){
-  const tabMap=new Map(tabs.map(t=>[t.id,{...t}]));
+  const tabMap=new Map(tabs.map(t=>[t.id,{windowId:10,...t}]));
   const stored=paused?{chatSmokeCircuit:{failures:2,paused:true}}:{};
   const local={...initialLocal},events={},logs=[],results=[],scans=[];
   const allowed=new Set(eligibility);
@@ -35,9 +35,17 @@ async function setup({tabs=[],eligibility=[],acks={},paused=false,initialLocal={
     windows:{getAll:async()=>[{id:10}]},
     alarms:{create(){},onAlarm:{addListener:f=>events.alarm=f}},
     tabs:{
-      query:async()=>[...tabMap.values()],
+      query:async(options={})=>[...tabMap.values(),
+        ...(options.windowId===10?[{id:2,windowId:10,url:"about:blank"}]:[])],
       create:async()=>{throw Error("No new tabs permitted during recovery tests")},
       get:async id=>tabMap.get(id)||null,
+      update:async(id,props)=>{
+        if(!tabMap.has(id))throw Error("missing_tab");
+        const value={...tabMap.get(id),...props};
+        tabMap.set(id,value);
+        logs.push({stage:"parked",id});
+        return value;
+      },
       remove:async id=>{logs.push({stage:"closed",id});tabMap.delete(id)},
       onRemoved:{addListener:f=>events.removed=f}
     },
@@ -112,6 +120,10 @@ const ack=id=>({status:"REPORT_ACKED",job_id:id,
   assert.equal(happy.scans[0].other_chatgpt_tabs,0);
   assert.equal(happy.scans[0].non_chatgpt_tabs,0);
   assert.equal(happy.scans[0].identified,2);
+  happy.events.alarm({name:"chat-smoke-queue"});
+  for(let n=0;n<135;n++)await new Promise(r=>setImmediate(r));
+  assert.equal(happy.scans.length,1,
+    "repeated alarms must not rescan every ChatGPT tab before the recovery interval");
   assert.equal(happy.scans[0].recovered,1);
   assert.equal(happy.scans[0].recovered_dom_only,1);
   assert.equal(happy.scans[0].restored_from_local,0);

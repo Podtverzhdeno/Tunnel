@@ -1,0 +1,75 @@
+name: Hermes Edge Autopilot QA
+
+on:
+  pull_request:
+    paths:
+      - "chat-launch-smoke-desktop-test/web-companion/**"
+      - "chat-launch-smoke-desktop-test/web-extension/**"
+      - "Hermes-WebGPT/Start-Hermes-Edge.ps1"
+      - "Hermes-WebGPT/Diagnose-Hermes-Edge.ps1"
+      - "docs/HERMES_EDGE_AUTOPILOT_LIFECYCLE_CPU_20261122.md"
+      - ".github/workflows/hermes-edge-autopilot-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-worker-offline:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate browser scripts and resource/identity regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location chat-launch-smoke-desktop-test/web-companion
+          node --check background.js
+          node --check background_content.js
+          node --check popup.js
+          node test_background.js
+          node test_recovery.js
+          node test_core.js
+          node test_background_content.js
+      - name: Parse Windows launcher without executing or opening Edge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tokens = $null
+          $parseErrors = $null
+          foreach ($script in @('Hermes-WebGPT/Start-Hermes-Edge.ps1',
+                                'Hermes-WebGPT/Diagnose-Hermes-Edge.ps1')) {
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
+          }
+          Write-Output 'PASS: PowerShell syntax; neither script was executed'
+      - name: Require source/build mirror equality
+        shell: pwsh
+        run: |
+          $pairs = @('background.js','background_content.js','popup.js','popup.html')
+          foreach ($p in $pairs) {
+            $a = (Get-FileHash -Algorithm SHA256 "chat-launch-smoke-desktop-test/web-companion/$p").Hash
+            $b = (Get-FileHash -Algorithm SHA256 "chat-launch-smoke-desktop-test/web-extension/$p").Hash
+            if ($a -ne $b) { throw "Extension mirror mismatch: $p" }
+          }
+          Write-Output 'PASS: mirrored browser worker and popup files'
+
+  bridge-regression-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run deterministic bridge/chain regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s chat-launch-smoke-desktop-test/web-companion -p 'test_*.py' -q

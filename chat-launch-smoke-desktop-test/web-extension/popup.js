@@ -2,11 +2,21 @@
 const state=document.getElementById("state");
 const circuit=document.getElementById("circuit");
 const resume=document.getElementById("resume");
+const resourceProfile=document.getElementById("resource-profile");
+const resourceStatus=document.getElementById("resource-status");
+const windowObservation=document.getElementById("window-observation");
 Promise.all([
-  chrome.storage.local.get(["chatSmokeLast","chatSmokeAuthPaused"]),
+  chrome.storage.local.get(["chatSmokeLast","chatSmokeAuthPaused","chatSmokeEnergyProfile","chatSmokeWindowCloseObservation"]),
   chrome.storage.session.get("chatSmokeCircuit")
 ]).then(([last,active])=>{
   const v=last.chatSmokeLast;
+  const observed=last.chatSmokeWindowCloseObservation;
+  windowObservation.textContent=observed?.code==="browser_window_closing"?
+    "Зафиксировано закрытие окна браузера: "+
+      new Date(observed.at).toLocaleString()+". Это не доказывает причину закрытия.":
+    "События закрытия окна расширением не наблюдались (это не исключает краш).";
+  resourceProfile.value=["eco","balanced","max_parallel"].includes(last.chatSmokeEnergyProfile)?
+    last.chatSmokeEnergyProfile:"balanced";
   const date=typeof v?.updatedAt==="number"?
     new Date(v.updatedAt).toLocaleString():"";
   state.textContent=v?
@@ -37,5 +47,18 @@ resume.addEventListener("click",async()=>{
       "Очередь возобновлена вручную.":"Возобновление не подтверждено.";
   }catch(_){
     circuit.textContent="Ошибка связи с фоновым обработчиком.";
+  }
+});
+resourceProfile.addEventListener("change",async()=>{
+  const chosen=resourceProfile.value;
+  if(!["eco","balanced","max_parallel"].includes(chosen))return;
+  resourceProfile.disabled=true;
+  try{
+    await chrome.storage.local.set({chatSmokeEnergyProfile:chosen});
+    resourceStatus.textContent="Режим сохранён. Новый лимит применяется к следующим заданиям; текущие вкладки не прерываются.";
+  }catch(_){
+    resourceStatus.textContent="Не удалось сохранить режим. Проверьте расширение и повторите.";
+  }finally{
+    resourceProfile.disabled=false;
   }
 });
