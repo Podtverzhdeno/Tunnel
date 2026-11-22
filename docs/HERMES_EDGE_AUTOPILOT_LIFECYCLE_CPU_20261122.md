@@ -42,11 +42,11 @@ An apparently closed browser can originate from **(A)** deleting the last MV3 ta
 
 In `web-companion/background.js`, mirrored byte-for-byte to `web-extension/background.js`:
 
-1. New **balanced** default: at most **6 currently active worker tabs** and **2 new job claims per poll**, staggered **2.5 seconds**. Existing bridge cap 25 and durable queued jobs remain unchanged. This is a resource **ceiling**, not a measured optimum.
-2. Existing **max_parallel** remains explicit opt-in: **25 active** and **4 claims per 30-second poll**, staggered **1.2 seconds**. Inflight work is not aborted when the user changes profiles; the new cap governs future admissions only.
+1. Three selectable ceilings: **eco** 2 active worker tabs / 1 new claim per poll / 4-second stagger; **balanced** **default** 6 active / 2 claims / 2.5-second stagger; **max_parallel** opt-in 25 active / 4 claims / 1.2-second stagger. All share the same durable bridge queue, completion proof and no-replay rules. These are experimental **limits**, not measured optimums.
+2. Inflight work is **not aborted** when the user switches profiles: the selected new cap governs future admissions, never retroactive forced closure. Existing bridge cap 25 remains unchanged.
 3. The full orphan-recovery scan is limited to once per **300 seconds** in MV3 `chrome.storage.session`. A new browser session scans immediately; the usual **30-second ACK/report polling is unchanged**. Storage survives service-worker suspension, not necessarily browser shutdown.
 4. When the only normal window's last tab has an already authorized terminal result, **navigate that exact owned tab to `about:blank` instead of removing it**. An ordinary tab with siblings is removed as before. If the browser's state or tab identity is uncertain, preserve evidence rather than close a user tab. A parked blank tab consumes substantially less SPA activity than an open ChatGPT task; actual CPU gains remain unmeasured.
-5. New popup dropdown selects balanced/max_parallel. No dynamic renderer killing, OS process killing, automatic login, cookie/profile copying, rerouting existing leases or resend on unknown outcome.
+5. New popup dropdown selects eco/balanced/max_parallel. No dynamic renderer killing, OS process killing, automatic login, cookie/profile copying, rerouting existing leases or resend on unknown outcome.
 
 The distinction `done` vs `submitted` vs `unknown` remains intact. In particular, `submitted` is NOT a completed model answer. Completion-mode cleanup still requires a scoped SHA-bound `REPORT_ACKED`, accepted `/v1/result` and ownership verification. Failed or disputed bindings are preserved; lowering a concurrency cap does not force-remove any agent tab.
 
@@ -139,6 +139,7 @@ Operational fail-safe: a CPU or RAM alarm should stop **new claims**, not kill t
 | Only managed task tab in only window; verified terminal receipt | Edge remains visible; tab becomes `about:blank`; no second Send |
 | Managed tab has another tab; verified terminal receipt | Only exact managed tab closes; user tab remains |
 | Browser executable exits after startup | Process/PID/exit/crash evidence distinguishes browser shutdown from final-tab closure |
+| 10 queued jobs, eco selected | No more than 2 worker tabs; remaining backlog stays durable |
 | 20 queued jobs, balanced selected | No more than 6 worker tabs; remaining backlog stays durable |
 | 30 queued jobs, max_parallel selected | Never more than 25 worker tabs, 4 new per poll |
 | Two polls 30 seconds apart | ACK polls run; no duplicate full DOM recovery scan |
@@ -160,3 +161,12 @@ For a developer-controlled official API worker pool, Edge can become a **monitor
 ## 9. Rollback
 
 This proposal lives only on the `hermes/edge-resource-supervisor-20261122` branch until reviewed. The original `main` source and live Windows installation are untouched. To undo, close the PR/ignore the branch. For a later owner-approved local installation, retain a backup of **exact** original extension files, compare SHA, replace only known source files with an empty queue, reload once, verify heartbeat/version/runtime build and re-run isolated smoke tests. Never restore/delete `bridge-state` as part of a code rollback.
+
+## 10. Grounded external design references (not evidence of local CPU gain)
+
+- Microsoft Edge high-CPU diagnosis: https://learn.microsoft.com/en-us/troubleshoot/microsoft-edge/performance/edge-high-cpu-memory — identify the *specific tab, extension, utility process* before altering settings.
+- Microsoft Edge energy/sleep settings: https://support.microsoft.com/en-us/edge/learn-about-performance-features-in-microsoft-edge — sleeping an active worker can interfere with long-running progress; sleeping completed pages is a different operation.
+- Chrome MV3 service worker lifecycle: https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle — workers are transient; state cannot live exclusively in globals.
+- Chrome storage semantics: https://developer.chrome.com/docs/extensions/reference/api/storage — `storage.session` is not a durable cross-browser-restart work ledger.
+- ChatGPT data controls: https://help.openai.com/en/articles/7730893-data-controls-in-chatgpt — temporary chats differ from persisted conversation history.
+- OpenAI Terms of Use: https://openai.com/policies/terms-of-use/ — programmatic extraction and attempts to bypass restrictions/rate limits are prohibited; a supported API/SDK worker is the production path when unattended automation is needed.
