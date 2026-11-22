@@ -1,0 +1,39 @@
+name: Web Companion recovery guard tests
+
+on:
+  pull_request:
+    paths:
+      - "chat-launch-smoke-desktop-test/web-companion/bridge.py"
+      - "chat-launch-smoke-desktop-test/web-companion/test_bridge.py"
+      - "chat-launch-smoke-desktop-test/web-companion/test_bridge_recovery_guard.py"
+      - ".github/workflows/bridge-recovery-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "chat-launch-smoke-desktop-test/web-companion/bridge.py"
+      - "chat-launch-smoke-desktop-test/web-companion/test_bridge.py"
+      - "chat-launch-smoke-desktop-test/web-companion/test_bridge_recovery_guard.py"
+      - ".github/workflows/bridge-recovery-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    name: Browser recovery regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Targeted negative recovery QA
+        run: python -m unittest discover -s chat-launch-smoke-desktop-test/web-companion -p "test_bridge_recovery_guard.py" -v
+      - name: Existing bridge regression tests
+        run: python -m unittest discover -s chat-launch-smoke-desktop-test/web-companion -p "test_bridge.py" -v
