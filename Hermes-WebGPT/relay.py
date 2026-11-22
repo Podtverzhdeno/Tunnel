@@ -215,6 +215,14 @@ class Queue:
           recorded_utc TEXT NOT NULL)''')
         self.db.execute('''CREATE INDEX IF NOT EXISTS request_state_events_by_request
           ON request_state_events(request_id,seq)''')
+        # One-time migration boundary: old records cannot retroactively
+        # acquire pre-install transitions. Keep the missing-history marker.
+        self.db.execute('''CREATE TABLE IF NOT EXISTS request_state_audit_meta (
+          id INTEGER PRIMARY KEY CHECK(id=1),
+          pre_audit_existing_requests INTEGER NOT NULL)''')
+        self.db.execute('''INSERT OR IGNORE INTO request_state_audit_meta
+          (id,pre_audit_existing_requests)
+          SELECT 1,COUNT(*) FROM requests''')
         self.db.execute('''CREATE TRIGGER IF NOT EXISTS relay_audit_request_created
           AFTER INSERT ON requests
           BEGIN
@@ -252,6 +260,9 @@ class Queue:
                 WHERE NOT EXISTS (
                   SELECT 1 FROM request_state_events e WHERE e.request_id=r.id)
                 ''').fetchone()[0]
+            baseline=self.db.execute('''
+                SELECT pre_audit_existing_requests FROM request_state_audit_meta
+                WHERE id=1''').fetchone()[0]
             events=[]
             for row in rows:
                 code=row['reason_code']
@@ -264,7 +275,8 @@ class Queue:
                     'reason_code':code,'recorded_utc':row['recorded_utc']})
             return {'events':events,
                     'history_missing_request_count':unobserved,
-                    'history_complete_for_current_requests':unobserved==0,
+                    'pre_audit_existing_request_count':baseline,
+                    'history_complete_for_current_requests':unobserved==0 and baseline==0,
                     'ordering':'sqlite_transaction_local_not_external_effect_order',
                     'browser_send_confirmed':False}
 
