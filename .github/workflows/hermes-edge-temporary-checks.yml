@@ -27,6 +27,18 @@ jobs:
         run: |
           node chat-launch-smoke-desktop-test/web-companion/test_background.js
           node chat-launch-smoke-desktop-test/web-companion/test_recovery.js
+      - name: Compare packaged and source extension code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("chat-launch-smoke-desktop-test")
+          for name in ("core.js", "background_content.js", "background.js"):
+              a = (root / "web-companion" / name).read_bytes()
+              b = (root / "web-extension" / name).read_bytes()
+              if a != b:
+                  raise SystemExit(f"extension_source_mirror_mismatch: {name}")
+              print(f"Extension mirror PASS: {name}")
+          PY
       - name: Edge safety contract and Hermes synthetic Python tests
         run: python3 -m unittest discover -s Hermes-WebGPT -p 'test_*.py' -v
 
