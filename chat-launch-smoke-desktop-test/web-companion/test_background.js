@@ -4,8 +4,11 @@ const fs=require("node:fs"),vm=require("node:vm"),assert=require("node:assert/st
 const source=fs.readFileSync(__dirname+"/background.js","utf8");
 const idAt=i=>"01234567-89ab-4cde-8901-"+String(i).padStart(12,"0");
 async function simulate({count=10,windows=1,longPrompt=false,completion=false,
-  realCap=false,removeFails=false,emitRemovedDuringRemove=false}={}){
-  const events={},stored={},local={},tabs=new Map(),logs=[],ackById=new Map(),results=[],tabIdentity=new Map(),acceptedById=new Map();
+  realCap=false,removeFails=false,emitRemovedDuringRemove=false,
+  profile="auto",noAnchor=false}={}){
+  const events={},stored={},local={chatSmokeEnergyProfile:
+    profile==="auto"?(realCap?"max_parallel":"balanced"):profile},
+    tabs=new Map(),logs=[],ackById=new Map(),results=[],tabIdentity=new Map(),acceptedById=new Map();
   let failRemove=removeFails;
   let now=1000000;
   let queue=Array.from({length:count},(_,i)=>({
@@ -37,7 +40,13 @@ async function simulate({count=10,windows=1,longPrompt=false,completion=false,
     alarms:{create(){},onAlarm:{addListener:f=>events.alarm=f}},
     windows:{getAll:async()=>Array.from({length:windows},(_,i)=>({id:100+i}))},
     tabs:{
-      query:async()=>[...tabs.values()].map(t=>({...t,url:t.url.startsWith("https://chatgpt.com/c/")?t.url:"https://chatgpt.com/c/test"+t.id})),
+      query:async(options={})=>{
+        const ordinary=(options.windowId===100&&!noAnchor)?
+          [{id:200,windowId:100,url:"about:blank"}]:[];
+        return [...ordinary,...tabs.values()].map(t=>({...t,url:
+          t.url.startsWith("https://chatgpt.com/c/")||t.url==="about:blank"?
+            t.url:"https://chatgpt.com/c/test"+t.id}));
+      },
       create:async props=>{
         const id=300+logs.filter(x=>x.type==="opened").length;
         tabs.set(id,{...props,id});
@@ -47,6 +56,13 @@ async function simulate({count=10,windows=1,longPrompt=false,completion=false,
       get:async id=>tabs.has(id)?{...tabs.get(id),url:
         tabs.get(id).url.startsWith("https://chatgpt.com/c/")?
           tabs.get(id).url:"https://chatgpt.com/c/test"+id}:null,
+      update:async(id,props)=>{
+        if(!tabs.has(id))throw Error("missing_tab");
+        const value={...tabs.get(id),...props};
+        tabs.set(id,value);
+        logs.push({type:"parked",id,url:props.url});
+        return value;
+      },
       remove:async id=>{
         if(failRemove)throw Error("simulated_remove_failed");
         tabs.delete(id);logs.push({type:"closed",id});
@@ -450,5 +466,24 @@ async function send(ext,message,tabId){
   for(let j=0;j<65;j++)await new Promise(r=>setImmediate(r));
   assert.equal(scaled.tabs.size,25,"released slot refilled without exceeding cap");
   assert.equal(scaled.queue.length,4);
-  console.log("PASS: 25-tab cap, four-per-poll ramp, refill, isolation, pause and ACK guards");
+  // Default resource profile: bound concurrent hydration to six live tabs.
+  const balanced=await simulate({count:20,realCap:true,profile:"balanced"});
+  assert.equal(balanced.tabs.size,2,"balanced admits two tabs per poll");
+  for(let i=0;i<4;i++){
+    balanced.events.alarm({name:"chat-smoke-queue"});
+    for(let j=0;j<65;j++)await new Promise(r=>setImmediate(r));
+  }
+  assert.equal(balanced.tabs.size,6,"balanced cap is six simultaneously live tabs");
+  assert.equal(balanced.queue.length,14,"remaining jobs stay queued");
+  // Releasing the final tab parks a lightweight about:blank tab, not the window.
+  const last=await simulate({count:1,noAnchor:true});
+  assert.equal(last.tabs.size,1);
+  const outcomeLast=await send(last,{type:"chat-smoke-finished",id:idAt(0),
+    status:"submitted",userSeen:true,reason:"submitted_after_min_hold",
+    url:"https://chatgpt.com/c/abc123"},300);
+  assert.equal(outcomeLast.reported,"submitted");
+  assert.equal(last.tabs.size,1,"last normal window stays open");
+  assert.equal(last.tabs.get(300).url,"about:blank","final tab parked with no ChatGPT JS");
+  assert.equal(last.logs.filter(x=>x.type==="closed").length,0);
+  console.log("PASS: 25-tab max, balanced 6/2, last-window park, refill, isolation, ACK guards");
 })().catch(e=>{console.error(e);process.exitCode=1});
