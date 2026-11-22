@@ -1,6 +1,8 @@
 """Offline tests. No actual browser, credentials, APIs or Windows dependencies."""
 import importlib.util
 import json
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -14,8 +16,9 @@ SHA = "a" * 40
 
 
 def manifest():
-    return {"manifest_version": 3, "version": "0.6.6", "name": "Test Extension",
+    return {"manifest_version": 3, "version": "0.6.6", "name": "Test Extension", "description":"Synthetic",
             "background": {"service_worker": "background.js"},
+            "action": {"default_popup": "popup.html", "default_title": "diagnostics"},
             "permissions": list(g.PERMS),
             "host_permissions": list(g.HOSTS),
             "content_scripts": [{"matches": ["https://chatgpt.com/*"],
@@ -38,10 +41,13 @@ class MirrorGateTests(unittest.TestCase):
             (self.mirror/name).write_bytes(data)
 
     def test_all_seven_files_match(self):
-        r = g.inspect(self.root, SHA)
+        with patch.object(g, "_validate_revision", return_value=True) as validate:
+            r = g.inspect(self.root, SHA)
+        validate.assert_called_once_with(self.root.resolve(), SHA)
         self.assertEqual(r["status"], "source_pair_verified")
         self.assertEqual(r["files_verified"], 7)
         self.assertEqual(r["source_revision"], SHA)
+        self.assertTrue(r["source_revision_verified"])
 
     def test_identity_digests_reproducible(self):
         a, b = g.inspect(self.root), g.inspect(self.root)
@@ -52,6 +58,7 @@ class MirrorGateTests(unittest.TestCase):
         self.assertFalse(r["runtime_verified"])
         self.assertFalse(r["external_effects_verified"])
         self.assertFalse(r["no_replay_authority"])
+        self.assertFalse(r["source_revision_verified"])
 
     def test_change_in_background_fails(self):
         (self.mirror/"background.js").write_text("different")
@@ -116,6 +123,51 @@ class MirrorGateTests(unittest.TestCase):
         for parent in (self.src,self.mirror): (parent/"manifest.json").write_text("[]")
         with self.assertRaisesRegex(g.UnsafeContract, "MANIFEST_NOT_OBJECT"):
             g.inspect(self.root)
+
+    def test_additional_manifest_permission_surface_rejected(self):
+        self.mutate_manifest("optional_host_permissions", ["https://*/*"])
+        with self.assertRaisesRegex(g.UnsafeContract, "MANIFEST_FIELDS_CHANGED"):
+            g.inspect(self.root)
+
+    def test_popup_redirect_rejected(self):
+        self.mutate_manifest("action", {"default_popup":"remote.html", "default_title":"hi"})
+        with self.assertRaisesRegex(g.UnsafeContract, "ACTION_POPUP_CHANGED"):
+            g.inspect(self.root)
+
+    @unittest.skipUnless(shutil.which("git"), "git missing")
+    def test_verified_revision_binds_exact_checkout(self):
+        self.git_init()
+        sha = self.git_head()
+        got = g.inspect(self.root, sha)
+        self.assertTrue(got["source_revision_verified"])
+        self.assertEqual(got["source_revision"], sha)
+
+    @unittest.skipUnless(shutil.which("git"), "git missing")
+    def test_fake_sha_rejected_even_if_format_valid(self):
+        self.git_init()
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "SOURCE_REVISION_NOT_CHECKED_OUT"):
+            g.inspect(self.root, SHA)
+
+    @unittest.skipUnless(shutil.which("git"), "git missing")
+    def test_dirty_both_mirrors_cannot_claim_committed_sha(self):
+        self.git_init()
+        sha = self.git_head()
+        for base in (self.src,self.mirror):
+            (base/"core.js").write_text("dirty-but-mirrored")
+        with self.assertRaisesRegex(g.EvidenceUnavailable, "SOURCE_FILES_DIRTY_OR_UNKNOWN"):
+            g.inspect(self.root, sha)
+
+    def git_head(self):
+        return subprocess.check_output(["git", "-C", str(self.root),
+                                        "rev-parse", "HEAD"], text=True).strip()
+
+    def git_init(self):
+        for arg in (["init", "-q"], ["config", "user.name", "Test"],
+                    ["config", "user.email", "test@example.invalid"],
+                    ["add", "chat-launch-smoke-desktop-test"],
+                    ["commit", "-qm", "synthetic"]):
+            subprocess.run(["git", "-C", str(self.root), *arg], check=True,
+                           capture_output=True)
 
     def test_missing_browser_file_unknown(self):
         (self.src/"popup.js").unlink()
