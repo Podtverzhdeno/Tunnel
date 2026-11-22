@@ -202,8 +202,72 @@ class Queue:
           request_id TEXT PRIMARY KEY,
           page_key TEXT NOT NULL UNIQUE,
           worker TEXT NOT NULL)''')
+        # All state transitions below are already SQL UPDATE/INSERT. SQLite
+        # triggers record metadata in the SAME transaction as each mutation,
+        # including rollbacks; no raw prompt, tool output, lease or URL.
+        # Existing old rows are not given fabricated historical transitions.
+        self.db.execute('''CREATE TABLE IF NOT EXISTS request_state_events (
+          seq INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id TEXT NOT NULL,
+          previous_state TEXT,
+          new_state TEXT NOT NULL,
+          reason_code TEXT,
+          recorded_utc TEXT NOT NULL)''')
+        self.db.execute('''CREATE INDEX IF NOT EXISTS request_state_events_by_request
+          ON request_state_events(request_id,seq)''')
+        self.db.execute('''CREATE TRIGGER IF NOT EXISTS relay_audit_request_created
+          AFTER INSERT ON requests
+          BEGIN
+            INSERT INTO request_state_events(
+              request_id,previous_state,new_state,reason_code,recorded_utc)
+            VALUES(NEW.id,NULL,NEW.state,NEW.reason,
+                   strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+          END''')
+        self.db.execute('''CREATE TRIGGER IF NOT EXISTS relay_audit_state_changed
+          AFTER UPDATE OF state ON requests
+          WHEN OLD.state <> NEW.state
+          BEGIN
+            INSERT INTO request_state_events(
+              request_id,previous_state,new_state,reason_code,recorded_utc)
+            VALUES(NEW.id,OLD.state,NEW.state,NEW.reason,
+                   strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+          END''')
         self.lock=threading.RLock()
     def close(self):self.db.close()
+    def state_event_tail(self,limit=100):
+        """Metadata-only committed SQL state chronology (not browser receipts).
+
+        During upgrades, existing requests may lack old history. Report that
+        gap explicitly. The sequence is database insertion/commit order, not
+        timestamp causality across browser workers or external effects.
+        """
+        if type(limit) is not int or not 1<=limit<=500:
+            raise RelayError('invalid_audit_limit')
+        with self.lock:
+            rows=self.db.execute('''
+                SELECT seq,request_id,previous_state,new_state,reason_code,recorded_utc
+                FROM request_state_events ORDER BY seq DESC LIMIT ?''',(limit,)).fetchall()
+            unobserved=self.db.execute('''
+                SELECT COUNT(*) FROM requests r
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM request_state_events e WHERE e.request_id=r.id)
+                ''').fetchone()[0]
+            events=[]
+            for row in rows:
+                code=row['reason_code']
+                if not isinstance(code,str) or not re.fullmatch(r'[a-z_]{1,60}',code):
+                    code='none' if code is None else 'other'
+                events.append({
+                    'seq':row['seq'],
+                    'request_digest':hashlib.sha256(row['request_id'].encode()).hexdigest(),
+                    'previous_state':row['previous_state'],'new_state':row['new_state'],
+                    'reason_code':code,'recorded_utc':row['recorded_utc']})
+            return {'events':events,
+                    'history_missing_request_count':unobserved,
+                    'history_complete_for_current_requests':unobserved==0,
+                    'ordering':'sqlite_transaction_local_not_external_effect_order',
+                    'browser_send_confirmed':False}
+
     def read(self,ident):
         with self.lock:
             row=self.db.execute('SELECT * FROM requests WHERE id=?',(ident,)).fetchone()
