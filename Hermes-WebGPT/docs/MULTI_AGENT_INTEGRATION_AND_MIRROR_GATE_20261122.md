@@ -164,3 +164,29 @@ OpenTelemetry GenAI Semantic Conventions плюс Weaver validator — **кан�
 5. Только после этого — проверку event schema, p95, нагрузку 10/30/50 логических агентов и поэтапный supervised rollout.
 
 Ни 40 mirror-тестов, ни этот SQLite source audit **не подтверждают** состояние текущей Windows-инсталляции, отправку ChatGPT или доставку Telegram. Уровень доказательства: `SOURCE_VERIFIED/CI_VERIFIED`; `RUNTIME/USER_EFFECT_UNKNOWN`.
+
+
+## 8. Критический proof gap: почему простой reorder \`send_clicked\` не исправляет атомарность
+
+Подтверждено чтением **текущего main, не live runtime**:
+
+1. `chat-launch-smoke-desktop-test/web-companion/background_content.js`: функция `stage(value)` делает `await chrome.runtime.sendMessage(...)` внутри `try/catch`, но **игнорирует возвращённый `ok:false` и глотает exception**. Эта функция возвращает управление без признаком verified/durable ACK. Строки 110–111 выполняют `button.click(); await stage("send_clicked")` — внешний побочный эффект предшествует отметке.
+2. `chat-launch-smoke-desktop-test/web-companion/background.js`: обработчик `chat-smoke-stage` пишет `chrome.storage.local.set(chatSmokeLast)`, затем вызывает `telemetry()`. Внутри `telemetry()` ошибка POST к bridge **глотается**, только пишется console.warn; обработчик всё равно отвечает `sendResponse({ok:true})`. Поэтому даже если перенести вызов `await stage("send_clicked")` перед `button.click()`, локальное `ok:true` **не означает**, что bridge/Relay durable committed intent.
+3. `chat-launch-smoke-desktop-test/web-companion/bridge.py`: `/v1/event` хранит ограниченный tail диагностических стадий, без action-level запрета повторного Send. PR #14 сохраняет самый ранний blocker после 60 записей и добавляет file fsync, но не вводит полномочия на pre-click Send, не связывает sender principal с action digest и не добавляет durable prepare/commit протокол.
+
+**Следствие:** простой reorder даёт **ложное ощущение безопасности**. Эксперимент с принудительным выпадением POST event при нормальном ответе из background обязан приводить к **NO_SEND**, а не к click.
+
+### Требуемый контракт для нового безопасного endpoint (только спецификация)
+
+Рекомендуется одноразовый write reservation с серверным владельцем вместо использования общего диагностического `/v1/event`:
+
+`content script → background → trusted bridge or Relay (`prepare_send`) → durable SQL COMMIT + unique(action_key,attempt_epoch) → explicit ack with job_id, attempt_id, action_digest, tab_id, profile_id, origin, doc_generation, lease_epoch, expiry → check matching ack → button.click() once → record attempt/outcome → independent read-back`.
+
+- `action_digest` binds bounded canonical prompt digest **inside trusted layer**, not raw prompt in log; use HMAC where IDs could leak user metadata. Server stores action reservation BEFORE approving click, and server-side unique constraint prevents second grant by other worker even after restart.
+- Ack must indicate **durable commitment** and exact binding; generic `HTTP 200`, local `chrome.storage` write, response with missing fields, stale fence, changed tab/doc/login, and a retry from another agent must be rejected as `INTENT_ACK_UNTRUSTED`. Diagnostic message `send_clicked` is a post-action observation, not auth.
+- If the service worker dies between receipt and browser click, server has reservation with `OUTCOME_UNKNOWN` or `NOT_ATTEMPTED_UNPROVEN`; never auto-reserve a second click without server-side reconciliation and independent profile/tab read-back. If app can't reliably know browser click outcome, represent this uncertainty.
+- Only one logically authoritative reservation owner; isolate from #10/#11 file edits and #14 bridge work. Addition of a new endpoint requires its own security review, scoped host approval, proof-of-failure tests and rollback. Do **not** permit an observer to invoke it.
+- Power-loss claims need SQLite `synchronous=FULL` / durable storage tests and, where using file rename on supported filesystems, review parent-directory durability. Atomic process visibility does **not** necessarily mean power-loss durability.
+- Acceptance fixtures: (a) dropped bridge POST after service worker local state write, (b) `ok:false` response after pre-click stage, (c) browser closes before click, (d) click occurs but completion ACK lost, (e) reconnect with stale worker lease, (f) two workers same action_key, (g) changed Chrome profile/account/tab/document, (h) event tail rolls over 60, (i) corrupt/partial observer log, (j) Telegram output ACK delayed. Any non-idempotent Send second execution fails the test.
+
+**Source provenance:** `Podtverzhdeno/Tunnel` main baseline `350ea33080bc35245aa6741f85fa926cc8a8fcaf`, checked ``background_content.js:17–24, 109–111`, ``background.js:129–139, 607–628`, ``bridge.py:395–450`. PR #10/#11/#14 may modify this; repeat review on final integrated SHA before trusting any fix.
