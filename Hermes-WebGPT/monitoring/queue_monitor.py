@@ -13,6 +13,11 @@ import time
 STATES = frozenset({'queued', 'claimed', 'intent', 'saved', 'done', 'blocked', 'uncertain'})
 ACTIVE = frozenset({'queued', 'claimed', 'intent', 'saved'})
 FAILURES = frozenset({'blocked', 'uncertain'})
+TERMINAL = frozenset({'done', 'blocked', 'uncertain'})
+# The reviewed Relay v1 never moves an existing request backwards through
+# queued -> claimed -> intent -> saved, nor out of a terminal state. Snapshots
+# may skip FORWARD phases, so only impossible backwards moves are suspicious.
+PHASE_ORDER = {'queued': 0, 'claimed': 1, 'intent': 2, 'saved': 3}
 LEGACY_REASONS = frozenset({
     'manual_input', 'uncertain_send', 'content_start_unverified', 'request_timeout',
     'prompt_too_large', 'high_unverified', 'missing_send', 'reply_not_json',
@@ -169,12 +174,22 @@ def observe(db_path, baseline=None, now=None, stale_seconds=600, max_rows=10000,
                for key, old in previous.items()):
             raise ObservationError('baseline_queue_mismatch')
     counts = {state: 0 for state in sorted(STATES)}
-    new_failures, stale, slow, refined = {}, {}, {}, {}
+    new_failures, stale, slow, refined, regressions = {}, {}, {}, {}, {}
     window_counts = {state: 0 for state in sorted(STATES)}
     for row in rows:
         state = row['state']
         counts[state] += 1
         old = previous.get(row['key']) if previous is not None else None
+        if old is not None:
+            before = old['state']
+            forbidden = ((before in TERMINAL and state != before) or
+                         (before in ACTIVE and state in ACTIVE and
+                          PHASE_ORDER[state] < PHASE_ORDER[before]))
+            if forbidden:
+                # Preserve only an aggregate typed transition, never request
+                # IDs, payload, URLs or credentials in public diagnostics.
+                transition = before + '->' + state
+                regressions[transition] = regressions.get(transition, 0) + 1
         reason_refined = (old is not None and old_catalog < REASON_CATALOG_VERSION and
                           old['state'] == state and old['reason'] == 'other' and
                           row['reason'] in REASONS - REASON_CATALOGS[old_catalog])
@@ -202,6 +217,8 @@ def observe(db_path, baseline=None, now=None, stale_seconds=600, max_rows=10000,
                        'count': sum(counts[s] for s in FAILURES)})
     if new_failures:
         alerts.append({'code': 'new_failures_since_snapshot', 'counts': new_failures})
+    if regressions:
+        alerts.append({'code': 'illegal_state_regression', 'transitions': regressions})
     if stale:
         alerts.append({'code': 'stale_active_requests', 'states': stale})
     if slow:
