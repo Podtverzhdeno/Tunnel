@@ -18,6 +18,8 @@ function canonicalChatUrl(url){
 const CAP=25;
 // Limit browser hydration spikes and MV3 service-worker poll duration.
 const CLAIMS_PER_POLL=4;
+const ECO_CAP=2;
+const ECO_CLAIMS_PER_POLL=1;
 const BALANCED_CAP=6;
 const BALANCED_CLAIMS_PER_POLL=2;
 const RECOVERY_SCAN_INTERVAL_MS=300000;
@@ -25,10 +27,13 @@ const RECOVERY_SCAN_KEY="chatSmokeRecoveryScanAt";
 // "max_parallel" is an explicit opt-in; resource-conserving mode is default.
 async function resourcePolicy(){
   const result=await chrome.storage.local.get("chatSmokeEnergyProfile");
-  return result.chatSmokeEnergyProfile==="max_parallel"?
-    {mode:"max_parallel",cap:CAP,claims:CLAIMS_PER_POLL,staggerMs:1200}:
-    {mode:"balanced",cap:Math.min(CAP,BALANCED_CAP),
-      claims:Math.min(CLAIMS_PER_POLL,BALANCED_CLAIMS_PER_POLL),staggerMs:2500};
+  if(result.chatSmokeEnergyProfile==="max_parallel")
+    return {mode:"max_parallel",cap:CAP,claims:CLAIMS_PER_POLL,staggerMs:1200};
+  if(result.chatSmokeEnergyProfile==="eco")
+    return {mode:"eco",cap:Math.min(CAP,ECO_CAP),
+      claims:Math.min(CLAIMS_PER_POLL,ECO_CLAIMS_PER_POLL),staggerMs:4000};
+  return {mode:"balanced",cap:Math.min(CAP,BALANCED_CAP),
+    claims:Math.min(CLAIMS_PER_POLL,BALANCED_CLAIMS_PER_POLL),staggerMs:2500};
 }
 // MV3 workers restart often; session storage survives worker suspension.
 // Scanning every alarm re-injects DOM probes into every open ChatGPT tab.
