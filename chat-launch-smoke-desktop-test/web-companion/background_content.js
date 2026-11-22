@@ -121,6 +121,13 @@
       // A saved /c/ route can coexist with an account-change failure toast.
       // Never treat that DOM route alone as proof of server acceptance.
       if(accountConflict()){await rejectAccountConflict();return;}
+      if(completionMode && savedStageAcked){
+        // Continue checking account/session alerts at a low cadence, without
+        // repeatedly walking the full message DOM or hydrating the editor.
+        // Ending this script immediately would lose post-send account checks.
+        await nap(5000);
+        continue;
+      }
       if(seenUserMessage(head)){
         if(!committedAt){
           committedAt=Date.now();wasCommitted=true;
@@ -133,7 +140,7 @@
           // there is no reason to scan the entire ChatGPT DOM twice/second.
           // The service worker independently awaits the durable scoped report
           // ACK and owns tab closure. This content script must NOT close it.
-          if(savedStageAcked)return;
+          if(savedStageAcked){await nap(5000);continue;}
           // On a lost handoff response retry ONLY the saved-stage evidence,
           // never the already-clicked Send. Rate-limit this fallback.
           savedStageAcked=await stage("message_saved");
@@ -170,7 +177,7 @@
     if(completionMode && wasCommitted){
       // Signal no terminal result: the background service worker owns the
       // report ACK lifecycle, including the case where this script exits.
-      await stage("message_saved");
+      if(!savedStageAcked)await stage("message_saved");
       return;
     }
     await report("unknown",wasCommitted?"assistant_timeout":"user_message_not_confirmed");
