@@ -257,3 +257,19 @@ CI GitHub Actions теперь поддерживает `merge_group: checks_req
 **Failure injection:** валидный по шаблону, но пустой по смыслу отчёт → `REPORT_ACKED`, затем `QUALITY_REJECTED`; отчёт хорош, но Telegram 429/timeout → `GOAL_PENDING_DELIVERY`, не `USER_DELIVERED`; browser crashed, внешний Send неизвестен → всё ещё `EFFECT_OUTCOME_UNKNOWN` даже при живом observer; P085 approval expired → `HOST_APPROVED` недействителен для новой попытки.
 
 При review PR #10/#11/#14 необходимо сохранить текущий узкий contract `advisory_artifact_integrity_only` и не переименовывать его в authoritative success. Источник: `chat-launch-smoke-desktop-test/web-companion/advisory_completion.py:1–9, 30–155` и `background.js:515–539` на базовом main; нужна повторная проверка после слияния.
+
+
+## 13. Release governance: текущая главная ветка не защищена
+
+**API evidence 2026-11-22:** `GET /repos/Podtverzhdeno/Tunnel/branches/main` вернул `protected=false`, а `GET /repos/Podtverzhdeno/Tunnel/rulesets` вернул пустой список. Это не доказывает, что у всех GitHub пользователей есть write access; оно означает отсутствие обнаруженного защищающего main branch rule для авторизованных на запись пользователей и агентов. В `Podtverzhdeno/hermes-agent` API также показывает `main.protected=false`. Не полагаться на добровольный режим DRAFT как на enforcement при десятках агентов.
+
+**Владелец GitHub репозитория должен отдельно утвердить и включить**, после инвентаризации нынешних CI/ботов:
+
+- запрет прямых pushes, force-push и delete `main` для обычных write identities; строго ограниченные администраторами exception paths, если нужны;
+- PR-only, хотя бы один независимый review (не от автора и не от сгенерировавшего код агента); dismiss stale reviews после обновления HEAD;
+- обязательные точные checks по объединённому результату, в том числе mirror four-way Python matrix, offline Node source smoke, Relay/bridge contracts и host approval при безопасности внешних действий; при merge queue срабатывать по `merge_group`;
+- `CODEOWNERS` по `relay.py`, `bridge.py`, `web-companion` и `web-extension` (два зеркала один logical owner), `manifest.json`, `P085`, `agent monitoring SDD`; owner identities назначаются людьми, не выдумываются в этом PR;
+- repo rulesets для владельцев GitHub Apps/bots; отдельные scoped credentials, нет shared token для всех 50 агентских аккаунтов;
+- временные разрешения, freeze для неизвестных эффектов, двухэтапный rollback; механизмы retry не обходят approvals.
+
+**Текущий PR** не меняет branch protection/rulesets и остаётся DRAFT. Заявление «можно автоматически мерджить» запрещено, даже если все source CI пройдут; без enforcement и Windows host E2E release readiness остаётся `BLOCKED_FOR_PRODUCTION`.
