@@ -1,6 +1,7 @@
 """Offline tests for the read-only Tunnel stack status command."""
 from __future__ import annotations
 import importlib.util
+import io
 from pathlib import Path
 import tempfile
 import unittest
@@ -107,6 +108,105 @@ class StatusTests(unittest.TestCase):
             result=status._bridge_status(self.root,18763)
         self.assertEqual(result["status"],"not_running")
         self.assertNotIn(token,str(result))
+
+
+    def test_mcp_malformed_health_json_is_unavailable_not_exception(self):
+        host=self.root/"Local-Workspace-Extensions"/"mcp-host-source"
+        host.mkdir(parents=True)
+        (host/"manage.py").write_text("# stub",encoding="utf-8")
+        state=host/".local-mcp-state"
+        state.mkdir()
+        token="A"*64
+        (state/"observer-token").write_text(token,encoding="ascii")
+        (state/"observer-authorization-header").write_text("Bearer "+token,encoding="ascii")
+        bodies=("[]","null","false","42",
+                '{"result":[]}', '{"result":{"serverInfo":[]}}',
+                '{"result":{"serverInfo":null}}')
+        for body in bodies:
+            with self.subTest(body=body), patch.object(
+                    status.urllib.request,"urlopen",return_value=io.StringIO(body)):
+                response=status._mcp_status(self.root,8765)
+            self.assertEqual(response,{"status":"unexpected_response","port":8765})
+            self.assertNotIn(token,str(response))
+
+    def test_bridge_malformed_health_json_is_not_ready(self):
+        base=self.root/"chat-launch-smoke-desktop-test"/"web-companion"
+        base.mkdir(parents=True)
+        (base/"bridge.py").write_text("# stub",encoding="utf-8")
+        state=base/"bridge-state"
+        state.mkdir()
+        token="D"*64
+        (state/"token").write_text(token,encoding="utf-8")
+        bodies=("[]","null","true","42",'"READY"',
+                '{"ok":[]}', '{"ok":1}', '{"ok":"true"}')
+        for body in bodies:
+            with self.subTest(body=body), patch.object(
+                    status.urllib.request,"urlopen",return_value=io.StringIO(body)):
+                response=status._bridge_status(self.root,18763)
+            self.assertEqual(response,{"status":"invalid_health","port":18763})
+            self.assertNotIn(token,str(response))
+        with patch.object(status.urllib.request,"urlopen",
+                          return_value=io.StringIO('{"ok":true}')):
+            self.assertEqual(status._bridge_status(self.root,18763),
+                             {"status":"ready","port":18763})
+
+
+    def test_malformed_chain2_preview_fails_closed(self):
+        valid_states={"done":0,"active":0}
+        bad_previews=(
+            {"ok":True,"armed":True,"held":False,"ready":"5","states":valid_states},
+            {"ok":True,"armed":True,"held":False,"ready":5,"states":[]},
+            {"ok":True,"armed":True,"held":"false","ready":5,"states":valid_states},
+            {"ok":True,"armed":True,"held":False,"ready":True,"states":valid_states},
+            {"ok":True,"armed":True,"held":False,"ready":5,
+             "states":{"done":0,"active":-1}},
+        )
+        for bad in bad_previews:
+            def preview(path):
+                return bad if path.name=="chain_campaign.py" else {"ok":False}
+            with (self.subTest(bad=bad),
+                  patch.object(status,"_run_preview",side_effect=preview),
+                  patch.object(status,"_chain2_triage_status",
+                               return_value={"status":"no_active_jobs"}),
+                  patch.object(status,"_mcp_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_bridge_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_extension_status",return_value={"status":"stale"})):
+                result=status.summary(self.root)
+            self.assertEqual(result["chain2"]["status"],"preview_invalid")
+            self.assertNotEqual(result["chain2"]["status"],"ready")
+            self.assertFalse(result["full_autonomous_ready"])
+
+    def test_chain3_requires_explicit_validated_readiness_facts(self):
+        chain2={"ok":True,"armed":False,"held":False,"ready":0,
+                "states":{"done":0,"active":0}}
+        base={"ok":True,"mode":"READ_ONLY","no_jobs_created":True,
+              "selected_mode":"sandbox","effective_mode":"sandbox",
+              "trusted_host_verified":False,"owner_armed":True,
+              "chain2_fully_accepted":True,"admission_held":False}
+        variants=(
+            ({}, "ready_for_admission"),
+            ({"effective_mode":"unexpected"}, "blocked"),
+            ({"selected_mode":"trusted","effective_mode":"trusted",
+              "trusted_host_verified":False}, "blocked"),
+            ({"admission_held":"false"}, "blocked"),
+            ({"no_jobs_created":None}, "blocked"),
+            ({"mode":"WRITE"}, "blocked"),
+            ({"chain2_fully_accepted":1}, "blocked"),
+        )
+        for changes, expected in variants:
+            chain3={**base,**changes}
+            def preview(path):
+                return chain2 if path.name=="chain_campaign.py" else chain3
+            with (self.subTest(changes=changes),
+                  patch.object(status,"_run_preview",side_effect=preview),
+                  patch.object(status,"_chain2_triage_status",
+                               return_value={"status":"no_active_jobs"}),
+                  patch.object(status,"_mcp_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_bridge_status",return_value={"status":"not_running"}),
+                  patch.object(status,"_extension_status",return_value={"status":"stale"})):
+                result=status.summary(self.root)
+            self.assertEqual(result["chain3"]["status"],expected)
+            self.assertFalse(result["full_autonomous_ready"])
 
 
 if __name__=="__main__":
