@@ -7,7 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import http.client
 import json
+import os
+import tempfile
 import threading
+import uuid
 import unittest
 
 import relay
@@ -15,6 +18,75 @@ import relay
 
 def request(message="fixture"):
     return {"model": relay.MODEL, "messages": [{"role": "user", "content": message}]}
+
+
+class RestartSafetyTests(unittest.TestCase):
+    def test_clean_startup_does_not_claim_full_health(self):
+        q=relay.Queue(":memory:")
+        try:
+            r=relay.startup_reconciliation_status(q)
+            self.assertFalse(r["startup_reconciliation_required"])
+            self.assertEqual(0,r["startup_active_requests"])
+            self.assertEqual("none",r["startup_recovery_action"])
+            self.assertNotIn("healthy",r)
+        finally:
+            q.close()
+
+    def test_after_crash_claim_survives_but_subscription_does_not(self):
+        with tempfile.TemporaryDirectory() as d:
+            db=os.path.join(d,"hermes-relay.sqlite")
+            original=relay.Queue(db)
+            ident=original.submit(request("one"),turn_id="turn-restart-fixture-0001")
+            job=original.claim(str(uuid.uuid4()))
+            self.assertIsNotNone(job)
+            original.close()
+            recovered=relay.Queue(db)
+            try:
+                before=recovered.read(ident)
+                warning=relay.startup_reconciliation_status(recovered)
+                self.assertEqual(1,warning["startup_active_by_state"]["claimed"])
+                self.assertTrue(warning["startup_reconciliation_required"])
+                self.assertEqual("inspect_previous_effects_no_automatic_replay",
+                                 warning["startup_recovery_action"])
+                recovered.submit(request("two"),turn_id="turn-restart-fixture-0002")
+                self.assertIsNone(recovered.claim(str(uuid.uuid4())))
+                self.assertEqual(before["state"],recovered.read(ident)["state"])
+                serialized=json.dumps(warning)
+                self.assertNotIn(ident,serialized)
+                self.assertNotIn("one",serialized)
+                self.assertNotIn(job["lease"],serialized)
+            finally:
+                recovered.close()
+
+    def test_after_crash_intent_remains_uncertain_and_never_reclaimed(self):
+        with tempfile.TemporaryDirectory() as d:
+            db=os.path.join(d,"hermes-relay.sqlite")
+            q=relay.Queue(db)
+            ident=q.submit(request("must_not_repeat"),turn_id="turn-restart-fixture-0003")
+            job=q.claim(str(uuid.uuid4()))
+            q.event(ident,job["lease"],"intent",tab=9)
+            q.close()
+            restored=relay.Queue(db)
+            try:
+                before=restored.read(ident)
+                warning=relay.startup_reconciliation_status(restored)
+                self.assertEqual(1,warning["startup_active_by_state"]["intent"])
+                self.assertTrue(warning["startup_reconciliation_required"])
+                self.assertIsNone(restored.claim(str(uuid.uuid4())))
+                self.assertEqual(before["state"],restored.read(ident)["state"])
+                self.assertEqual(before["lease"],restored.read(ident)["lease"])
+            finally:restored.close()
+
+    def test_terminal_rows_do_not_block_clean_startup(self):
+        q=relay.Queue(":memory:")
+        try:
+            ident=q.submit(request(),turn_id="turn-restart-fixture-0004")
+            job=q.claim(str(uuid.uuid4()))
+            q.event(ident,job["lease"],"blocked",reason="worker_failed")
+            warning=relay.startup_reconciliation_status(q)
+            self.assertFalse(warning["startup_reconciliation_required"])
+            self.assertEqual(0,warning["startup_active_requests"])
+        finally:q.close()
 
 
 class WaiterBudgetTests(unittest.TestCase):
