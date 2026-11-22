@@ -3,6 +3,12 @@
 h1{font-size:15px}p{line-height:1.5}code{color:#93cfbf}</style></head>
 <body><h1>ChatGPT — фоновый тест</h1><p id="state">Читаю состояние…</p>
 <p>Если две отправки подряд не удались, очередь автоматически останавливается.</p>
+<label for="resource-profile">Режим ресурсов:</label>
+<select id="resource-profile" style="width:100%;margin:7px 0;padding:7px;background:#202c38;color:#fff">
+<option value="balanced">Сбалансированный — до 6 вкладок / 2 за цикл</option>
+<option value="max_parallel">Максимум — до 25 вкладок / 4 за цикл</option>
+</select>
+<p id="resource-status">Режим применяется только к новым заданиям; текущие вкладки не прерываются.</p>
 <p id="circuit">Проверяю защиту…</p>
 <button id="resume" type="button" style="padding:8px 10px;cursor:pointer">Возобновить очередь</button>
 <script src="popup.js"></script></body></html>
