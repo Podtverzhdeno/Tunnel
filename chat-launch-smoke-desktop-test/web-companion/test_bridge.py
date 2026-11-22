@@ -50,6 +50,30 @@ class ServerTests(unittest.TestCase):
     def put(self,jid,prompt="ping"):
         (self.queue/(jid+".json")).write_text(json.dumps({"id":jid,"prompt":prompt}),encoding="utf-8")
 
+    def test_heartbeat_rejects_non_object_json_without_disconnect(self):
+        # Malformed extension telemetry must return HTTP 400; the handler
+        # thread must not crash or record any unverified heartbeat.
+        for payload in ([], ["fake"], "polling", 3, True):
+            with self.subTest(payload=payload):
+                status, response = self.request(
+                    "/v1/heartbeat", "POST", payload
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(response, {"error": "invalid_heartbeat"})
+        self.assertFalse((self.diag / "extension.json").exists())
+
+    def test_event_rejects_non_object_json_without_disconnect(self):
+        # An extension bug or malformed caller must not tear down the TCP
+        # connection by triggering AttributeError on a JSON array/scalar.
+        for payload in ([], ["fake"], "tab_opening", 3, True):
+            with self.subTest(payload=payload):
+                status, response = self.request(
+                    "/v1/event", "POST", payload
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(response, {"error": "invalid_event"})
+        self.assertEqual(list(self.diag.iterdir()), [])
+
     def test_result_url_strips_sensitive_query_parameters(self):
         jid="01234567-89ab-4cde-8901-000000000151"
         self.put(jid)
