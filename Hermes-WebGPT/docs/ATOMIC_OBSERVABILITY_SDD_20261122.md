@@ -206,8 +206,8 @@ bridge.py, test_bridge.py и новые отдельные документы.
 |---|---:|---:|---:|---:|---:|
 | UI retries + screenshots, без durable intent | 1 | 1 | 2 | 4 | 1.55 |
 | Existing extension/Relay + read-only observer | 3 | 3 | 3 | 5 | 3.20 |
-| Extension + pre-Send ACK + causal evidence | 4 | 5 | 4 | 3 | 4.15 |
-| CDP-only transport без независимых квитанций | 2 | 3 | 3 | 2 | 2.50 |
+| Extension + pre-Send ACK + causal evidence | 4 | 5 | 4 | 3 | 4.20 |
+| CDP-only transport без независимых квитанций | 2 | 3 | 3 | 2 | 2.55 |
 | Официально поддерживаемый API + Hermes orchestration | 5 | 5 | 5 | 3 | 4.80 |
 
 Последняя альтернатива может требовать отдельные scope, тарифы и
