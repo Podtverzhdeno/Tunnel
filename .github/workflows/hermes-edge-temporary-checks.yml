@@ -23,5 +23,9 @@ jobs:
         run: node chat-launch-smoke-desktop-test/web-companion/test_core.js
       - name: JS browser content send/ack regression
         run: node chat-launch-smoke-desktop-test/web-companion/test_background_content.js
+      - name: JS queue throttling and orphan recovery regression
+        run: |
+          node chat-launch-smoke-desktop-test/web-companion/test_background.js
+          node chat-launch-smoke-desktop-test/web-companion/test_recovery.js
       - name: Edge safety contract and Hermes synthetic Python tests
         run: python3 -m unittest discover -s Hermes-WebGPT -p 'test_*.py' -v
