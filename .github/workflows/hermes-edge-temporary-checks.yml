@@ -57,7 +57,8 @@ jobs:
             'Hermes-WebGPT/Start-Hermes-Edge-Temporary.ps1',
             'Hermes-WebGPT/Measure-Hermes-Edge-CPU.ps1',
             'Hermes-WebGPT/Benchmark-Hermes-Edge.ps1',
-            'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1'
+            'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1',
+            'Hermes-WebGPT/Watch-Hermes-Edge-Lifetime.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
