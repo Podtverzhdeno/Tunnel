@@ -151,3 +151,11 @@
 - [Chrome native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging/)
 - [Upstream Hermes Kanban worker lanes](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/kanban-worker-lanes.md)
 - [Upstream Kanban worker session observability gap](https://github.com/NousResearch/hermes-agent/issues/74008)
+
+## 10. ADD-2026-11-22: SSE exception framing bug verified in source
+
+Код `Handler.do_POST` до этой ветки мог отправить `HTTP 200` и `Content-Type: text/event-stream`, а затем при `ValueError/KeyError/TypeError/RecursionError` вызвать `self.error(...)`. После отправки заголовков второй HTTP response (например, `HTTP 400`) нельзя легально вставлять в SSE body; это невалидный stream и затрудняет RCA. Исправлено: флаг `stream_headers_sent` устанавливается сразу после end_headers; после этого typed/untyped ошибки передаются только как SSE `data: {"error":...}`, а необработанные внутренние сообщения редактируются как `invalid_request`. При закрытом канале прежнее поведение cancel/uncertain сохраняется. **Не отправлять [DONE] на ошибке.**
+
+Новый тест с синтетической ошибкой `ValueError("PRIVATE_INTERNAL_EXCEPTION")` после SSE 200 проверяет отсутствие второго HTTP status line, отсутствие private exception, явный `invalid_request`, освобождение waiter и терминальное `blocked` до Send. Реальный браузер/Telegram не используется. Матричный CI повторяется на новом exact SHA; прохождение предыдущего CI этой ревизией не наследуется.
+
+**Дополнительное ограничение:** низкоуровневые `sqlite3.Error`, `OSError` и внезапное завершение процесса в данном обработчике пока не переводятся автоматически в SSE: некоторые классы ошибок необходимо выявлять на уровне supervisor и durable ledger, не подменяя потерянный ответ выдуманным успехом. Это отдельная проверка, а не обещание решённого error universe.
