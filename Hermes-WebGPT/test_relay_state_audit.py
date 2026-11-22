@@ -191,6 +191,19 @@ class AuditTransitionTests(unittest.TestCase):
             thread.join(timeout=3)
             server.server_close()
 
+    def test_fifty_agent_polling_cursor_does_not_fullscan_requests(self):
+        self.q.submit(req(),turn_id="turn-audit-fixture-0099")
+        traces=[]
+        self.q.db.set_trace_callback(traces.append)
+        try:
+            page=self.q.state_events_since(after_seq=0,limit=1)
+        finally:
+            self.q.db.set_trace_callback(None)
+        self.assertEqual(1,len(page["events"]))
+        self.assertTrue(page["history_complete_for_current_requests"])
+        self.assertFalse(any("FROM requests r" in statement for statement in traces))
+        self.assertFalse(any("payload" in statement for statement in traces))
+
     def test_empty_cursor_preserves_offset_and_rejects_bad_numbers(self):
         self.q.submit(req(),turn_id="turn-audit-fixture-0081")
         empty=self.q.state_events_since(after_seq=10,limit=1)
