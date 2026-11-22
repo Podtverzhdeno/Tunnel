@@ -108,3 +108,8 @@ OpenSpec already describes pre-Send durable intent and no ambiguous-send retry (
 - OpenTelemetry GenAI agent/tools: https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/execute-tool.md
 - W3C trace context: https://www.w3.org/TR/trace-context/
 - Google SRE monitoring: https://sre.google/sre-book/monitoring-distributed-systems/
+
+
+## 10. Архитектурное решение о supported GPT transport (ADR-001)
+
+Отдельный документ [ADR-001 — transport evidence selection](ADR-001-transport-evidence-selection.md) строго сопоставляет официальный SIWC OSS → Responses, Codex App Server, прямой оплачиваемый API, локальную модель и браузерные маршруты. Взвешенные экспертные оценки пересчитаны по указанным весам, **не** выдаются за результаты бенчмарков. PR #12 остаётся владельцем исследования/реализации альтернативных transport; PR #13 не меняет inference routing. На каждый новый маршрут необходимы фактический OAuth scope, owner consent, exact request/delivery receipt, noReplay и E2E. Строгий запрет на молчаливый fallback к платному API и к недокументированному backend endpoint.
