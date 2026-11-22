@@ -18,6 +18,27 @@ function canonicalChatUrl(url){
 const CAP=25;
 // Limit browser hydration spikes and MV3 service-worker poll duration.
 const CLAIMS_PER_POLL=4;
+const BALANCED_CAP=6;
+const BALANCED_CLAIMS_PER_POLL=2;
+const RECOVERY_SCAN_INTERVAL_MS=300000;
+const RECOVERY_SCAN_KEY="chatSmokeRecoveryScanAt";
+// "max_parallel" is an explicit opt-in; resource-conserving mode is default.
+async function resourcePolicy(){
+  const result=await chrome.storage.local.get("chatSmokeEnergyProfile");
+  return result.chatSmokeEnergyProfile==="max_parallel"?
+    {mode:"max_parallel",cap:CAP,claims:CLAIMS_PER_POLL,staggerMs:1200}:
+    {mode:"balanced",cap:Math.min(CAP,BALANCED_CAP),
+      claims:Math.min(CLAIMS_PER_POLL,BALANCED_CLAIMS_PER_POLL),staggerMs:2500};
+}
+// MV3 workers restart often; session storage survives worker suspension.
+// Scanning every alarm re-injects DOM probes into every open ChatGPT tab.
+async function recoverIfDue(){
+  const data=await chrome.storage.session.get(RECOVERY_SCAN_KEY);
+  const now=Date.now(),last=data[RECOVERY_SCAN_KEY];
+  if(Number.isFinite(last)&&now>=last&&now-last<RECOVERY_SCAN_INTERVAL_MS)return;
+  await chrome.storage.session.set({[RECOVERY_SCAN_KEY]:now});
+  await recoverOrphanedTabs();
+}
 const UI_COOLDOWN_MS=90000;
 const MAX_UI_PROBE_FAILURES=2;
 let runningPoll=null;
@@ -355,6 +376,28 @@ async function dropTask(id){
   await chrome.storage.session.remove(PREFIX+id);
   await chrome.storage.local.remove(OWNED_PREFIX+id);
 }
+// Do not shut down the only normal browser window by removing its final tab.
+// After the task's existing ownership/ACK checks, park that tab on a lightweight
+// blank page instead. On any uncertainty, preserve the tab and its evidence.
+async function releaseManagedTab(job){
+  const tab=await chrome.tabs.get(job.tabId);
+  if(!tab||!Number.isInteger(tab.windowId)||typeof tab.url!=="string")return "preserved";
+  const eligible=job.completionMode?
+    canonicalChatUrl(tab.url)===canonicalChatUrl(job.savedUrl):
+    tab.url.startsWith("https://chatgpt.com/");
+  if(!eligible)return "preserved";
+  const windows=await chrome.windows.getAll({windowTypes:["normal"]});
+  if(windows.length===1&&windows[0].id===tab.windowId){
+    const siblings=await chrome.tabs.query({windowId:tab.windowId});
+    if(siblings.length===1&&siblings[0].id===job.tabId){
+      if(typeof chrome.tabs.update!=="function")return "preserved";
+      await chrome.tabs.update(job.tabId,{url:"about:blank"});
+      return "parked";
+    }
+  }
+  await chrome.tabs.remove(job.tabId);
+  return "closed";
+}
 async function finish(job,status,url="",responseText="",options={}){
   if(!job||job.finishing)return;
   // Finalize a completion report only for the exact uniquely identified agent
@@ -405,9 +448,10 @@ async function finish(job,status,url="",responseText="",options={}){
             canonicalChatUrl(tab.url)===canonicalChatUrl(job.savedUrl):
             tab.url.startsWith("https://chatgpt.com/"));
         if(eligible){
-          await chrome.tabs.remove(job.tabId);
-          closed=true;
-          await telemetry(job,"tab_closed");
+          const release=await releaseManagedTab(job);
+          closed=release==="closed"||release==="parked";
+          await telemetry(job,release==="closed"?"tab_closed":
+            release==="parked"?"tab_parked":"tab_close_skipped");
         }else{
           await telemetry(job,"tab_close_skipped");
         }
@@ -443,8 +487,12 @@ async function retryAcceptedClosure(task){
     // intentional close durably in session first, just like finish() does.
     // Otherwise onRemoved mislabels a verified DONE as unexpected_close.
     await putTask({...task,finishing:true});
-    await chrome.tabs.remove(task.tabId);
-    await telemetry(task,"tab_closed");
+    const release=await releaseManagedTab(task);
+    if(release==="preserved"){
+      await putTask({...task,finishing:false,closeRetryNoted:true});
+      return;
+    }
+    await telemetry(task,release==="parked"?"tab_parked":"tab_closed");
     await dropTask(task.id);
   }catch(_){
     // A failed removal must be retryable: do not strand a finishing=true task.
@@ -483,7 +531,7 @@ async function dispatch(job,windowId){
 async function poll(){
   if(runningPoll)return runningPoll;
   runningPoll=(async()=>{
-    try{await recoverOrphanedTabs();}
+    try{await recoverIfDue();}
     catch(e){console.warn("Task recovery unavailable:",String(e));}
     const current=await listActive();
     for(const task of current){
@@ -545,7 +593,9 @@ async function poll(){
     if(await pausedCircuit())return;
     const stillActive=await listActive();
     const budget=await claimBudget();
-    let capacity=Math.min(budget,Math.max(0,CAP-stillActive.length));
+    const policy=await resourcePolicy();
+    let capacity=Math.min(budget,policy.claims,
+      Math.max(0,policy.cap-stillActive.length));
     // The bridge also bounds total claims; do not claim a burst of 25 tabs.
     while(capacity-- > 0){
       if(await pausedCircuit())return;
@@ -563,7 +613,7 @@ async function poll(){
       await dispatch(response.job,win.id);
       // Spread browser hydration across a few seconds while keeping the
       // resulting chats concurrent. This avoids ten editors racing for focus.
-      if(capacity>=0) await new Promise(resolve=>setTimeout(resolve,1200));
+      if(capacity>=0) await new Promise(resolve=>setTimeout(resolve,policy.staggerMs));
     }
   })().finally(()=>{runningPoll=null;});
   return runningPoll;
