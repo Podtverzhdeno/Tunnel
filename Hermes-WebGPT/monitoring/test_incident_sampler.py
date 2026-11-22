@@ -52,6 +52,7 @@ class SamplerTests(unittest.TestCase):
         with patch.object(s.queue_monitor, 'observe', side_effect=s.queue_monitor.ObservationError('database_unavailable'), create=True):
             report = s.run_cycle(self.source, self.journal)
         self.assertEqual(report['status'], 'observation_unavailable')
+        self.assertEqual(report['observation_error'], 'database_unavailable')
         with contextlib.closing(sqlite3.connect(self.journal)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM monitor_baseline').fetchone()[0], 1)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM incident_events').fetchone()[0], 2)
@@ -113,6 +114,7 @@ class SamplerTests(unittest.TestCase):
         with patch.object(s.queue_monitor, 'observe', side_effect=RuntimeError('secret=password'), create=True):
             status = s.run_cycle(self.source, self.journal)
         self.assertEqual(status['status'], 'observation_unavailable')
+        self.assertEqual(status['observation_error'], 'observer_unavailable')
         self.assertNotIn(b'password', self.journal.read_bytes())
 
 
