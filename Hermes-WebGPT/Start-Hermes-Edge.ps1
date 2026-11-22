@@ -16,7 +16,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'Windows-only Edge launcher.'
 }
 if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
@@ -43,7 +43,7 @@ $standardProfile = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Microsof
 if ($profile.TrimEnd('\') -ieq $standardProfile.TrimEnd('\')) {
     throw 'Refusing to automate the default personal Edge profile.'
 }
-New-Item -ItemType Directory -Path $profile -Force | Out-Null
+# The profile is created only after the process-ownership checks succeed.
 
 # Only inspect processes; NEVER kill or change a user's browser process.
 try {
@@ -68,6 +68,7 @@ if ($owned.Count -gt 0) {
     return
 }
 
+New-Item -ItemType Directory -Path $profile -Force | Out-Null
 $argsList = @(
     ('--user-data-dir="' + $profile + '"'),
     '--no-first-run',
