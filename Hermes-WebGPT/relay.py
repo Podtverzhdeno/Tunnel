@@ -497,6 +497,25 @@ class Queue:
                 "WHERE id=? AND state NOT IN ('done','blocked','uncertain')",
                 (ident,))
 
+def startup_reconciliation_status(queue):
+    """Redacted startup snapshot: detect leftover durable active work.
+
+    A fresh process loses the previous in-memory HTTP waiter registry, but
+    SQLite claimed/intent/saved rows persist. NEVER recycle them here: a
+    browser Send could have happened and its ACK could be missing.
+    """
+    counts=queue.status_counts()
+    states=('claimed','intent','saved')
+    active={state:sum(per_transport[state] for per_transport in counts.values())
+            for state in states}
+    total=sum(active.values())
+    return {'startup_active_by_state':active,
+            'startup_active_requests':total,
+            'startup_reconciliation_required':total>0,
+            'startup_recovery_action':'inspect_previous_effects_no_automatic_replay'
+                if total else 'none'}
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads=True
     def __init__(self,address,queue,key,timeout=1200,enable_playwright=False,
@@ -885,7 +904,8 @@ def main():
                   playwright_key=playwright_key)
     print(compact({'ok':True,'port':server.server_address[1],'model':MODEL,
                    'playwright_route_enabled':server.enable_playwright,
-                   'default_transport':'extension','max_active_requests':1}),flush=True)
+                   'default_transport':'extension','max_active_requests':1,
+                   **startup_reconciliation_status(queue)}),flush=True)
     try:server.serve_forever()
     finally:server.server_close();queue.close()
 if __name__=='__main__':main()
