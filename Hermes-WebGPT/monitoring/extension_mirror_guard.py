@@ -195,6 +195,31 @@ def _incident(exc: Exception, revision: str | None) -> dict:
             "safe_next_action": "Review source at exact revision; do not deploy or auto-replay browser actions."}
 
 
+def _safe_report_target(root: Path, requested: Path) -> Path:
+    """Never overwrite source, credentials or arbitrary files via --report."""
+    root = root.resolve()
+    if requested.name not in {"mirror-report.json", "webgpt-mirror-report.json"}:
+        raise EvidenceUnavailable("REPORT_FILENAME_NOT_ALLOWLISTED")
+    if ".." in requested.parts:
+        raise EvidenceUnavailable("REPORT_PATH_TRAVERSAL")
+    target = requested if requested.is_absolute() else root / requested
+    target = target.absolute()
+    if not target.is_relative_to(root):
+        raise EvidenceUnavailable("REPORT_OUTSIDE_CHECKOUT")
+    relative = target.relative_to(root)
+    forbidden = {".git", "bridge-state", "profiles", "web-companion", "web-extension"}
+    if any(part in forbidden for part in relative.parts):
+        raise EvidenceUnavailable("REPORT_PATH_PROTECTED")
+    cursor = root
+    for part in relative.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            raise EvidenceUnavailable("REPORT_SYMLINK")
+    if target.exists() and not target.is_file():
+        raise EvidenceUnavailable("REPORT_NOT_FILE")
+    return target
+
+
 def _save_json(path: Path, result: dict) -> None:
     # Atomic report replace, not a Relay state transition or durable tool receipt.
     # Only the explicitly requested report path can be written.
@@ -232,7 +257,11 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 3
     if args.report:
         try:
-            _save_json(args.report, result)
+            target = _safe_report_target(args.root, args.report)
+            _save_json(target, result)
+        except EvidenceUnavailable as exc:
+            print(f"EVIDENCE_UNKNOWN: {exc}", file=sys.stderr)
+            return 3
         except OSError:
             print("EVIDENCE_UNKNOWN: REPORT_WRITE_FAILED", file=sys.stderr)
             return 3
