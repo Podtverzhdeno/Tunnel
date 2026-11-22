@@ -1,0 +1,61 @@
+name: Hermes WebGPT extension mirror integrity (read-only)
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '19 5,17 * * *'
+permissions:
+  contents: read
+concurrency:
+  # Superseded revisions should not consume the whole agent CI budget.
+  # Cancelled/stale checks never imply successful review of a newer SHA.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  check-source-pair:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.13']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Source-integrity contract regression tests
+        run: python -m unittest discover -s Hermes-WebGPT/monitoring -p 'test_extension_mirror_guard.py' -v
+      - name: Validate actual extension files and reviewed permissions
+        shell: bash
+        run: |
+          python Hermes-WebGPT/monitoring/extension_mirror_guard.py \
+            --root . --revision "${GITHUB_SHA}" --report webgpt-mirror-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webgpt-mirror-${{ matrix.os }}-py${{ matrix.python }}-${{ github.run_id }}
+          path: webgpt-mirror-report.json
+          retention-days: 7
+          if-no-files-found: ignore
+  mock-browser-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run offline Web Companion DOM, send and recovery regression tests
+        working-directory: chat-launch-smoke-desktop-test/web-companion
+        run: |
+          node test_core.js
+          node test_background_content.js
+          node test_background.js
+          node test_recovery.js
