@@ -2,6 +2,7 @@ name: Hermes queue observer integrity
 on:
   push:
     branches:
+      - main
       - docs/hermes-gpt-atomic-sdd-monitor-review-20261122
     paths:
       - Hermes-WebGPT/monitoring/**
