@@ -800,7 +800,7 @@ class Handler(BaseHTTPRequestHandler):
                 for model in ids]})
         if self.path.startswith('/bridge/audit'):
             # Authenticated Hermes principal only (already checked above).
-            match=re.fullmatch(r'/bridge/audit(?:\\?after=([0-9]{1,18})&limit=([0-9]{1,3}))?',self.path)
+            match=re.fullmatch(r'/bridge/audit(?:\?after=([0-9]{1,18})&limit=([0-9]{1,3}))?',self.path)
             if not match:return self.error(400,'invalid_audit_query')
             after=int(match.group(1)) if match.group(1) else 0
             limit=int(match.group(2)) if match.group(2) else 100
