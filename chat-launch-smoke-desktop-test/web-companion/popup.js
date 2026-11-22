@@ -4,11 +4,17 @@ const circuit=document.getElementById("circuit");
 const resume=document.getElementById("resume");
 const resourceProfile=document.getElementById("resource-profile");
 const resourceStatus=document.getElementById("resource-status");
+const windowObservation=document.getElementById("window-observation");
 Promise.all([
-  chrome.storage.local.get(["chatSmokeLast","chatSmokeAuthPaused","chatSmokeEnergyProfile"]),
+  chrome.storage.local.get(["chatSmokeLast","chatSmokeAuthPaused","chatSmokeEnergyProfile","chatSmokeWindowCloseObservation"]),
   chrome.storage.session.get("chatSmokeCircuit")
 ]).then(([last,active])=>{
   const v=last.chatSmokeLast;
+  const observed=last.chatSmokeWindowCloseObservation;
+  windowObservation.textContent=observed?.code==="browser_window_closing"?
+    "Зафиксировано закрытие окна браузера: "+
+      new Date(observed.at).toLocaleString()+". Это не доказывает причину закрытия.":
+    "События закрытия окна расширением не наблюдались (это не исключает краш).";
   resourceProfile.value=last.chatSmokeEnergyProfile==="max_parallel"?"max_parallel":"balanced";
   const date=typeof v?.updatedAt==="number"?
     new Date(v.updatedAt).toLocaleString():"";
