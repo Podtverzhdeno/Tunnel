@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from contextlib import closing
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -49,6 +50,20 @@ def run_cycle(relay_db, journal_db, *, max_rows=10000, stale_seconds=600,
     if type(keep_events) is not int or not 1 <= keep_events <= 10000:
         raise SamplerError('invalid_retention')
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # SQLite defaults to 0644 with a typical POSIX umask: even metadata-only
+    # logs must not be published. Require a private existing directory, and
+    # create the file owner-only BEFORE SQLite opens it (WAL inherits its mode).
+    if target.parent.is_symlink() or (os.name != 'nt' and target.parent.stat().st_mode & 0o077):
+        raise SamplerError('insecure_journal_directory')
+    try:
+        fd = os.open(target, os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        os.close(fd)
+    except OSError as exc:
+        raise SamplerError('journal_unavailable') from exc
+    if not target.is_file() or target.is_symlink():
+        raise SamplerError('invalid_journal_path')
+    if os.name != 'nt' and target.stat().st_mode & 0o077:
+        raise SamplerError('insecure_journal_permissions')
     try:
         with closing(sqlite3.connect(target, timeout=10, isolation_level=None)) as db:
             db.execute('PRAGMA busy_timeout=10000')
