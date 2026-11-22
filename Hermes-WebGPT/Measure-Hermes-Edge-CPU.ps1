@@ -26,16 +26,19 @@ function Snapshot {
     }
     $result=@()
     foreach($pidValue in $ids){
-        $proc=Get-Process -Id $pidValue -ErrorAction SilentlyContinue
-        if($proc){
-            $result += [pscustomobject]@{
-                pid=$pidValue; cpu_seconds=[double]$proc.CPU
-                start_ticks=[long]$proc.StartTime.Ticks
-                working_set_bytes=[long]$proc.WorkingSet64
+        # A renderer may terminate between the CIM snapshot and process read.
+        try {
+            $proc=Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+            if($proc){
+                $result += [pscustomobject]@{
+                    pid=$pidValue; cpu_seconds=[double]$proc.CPU
+                    start_ticks=[long]$proc.StartTime.Ticks
+                    working_set_bytes=[long]$proc.WorkingSet64
+                }
             }
-        }
+        } catch [System.Exception] { continue }
     }
-    return ,$result
+    return $result
 }
 $before=@(Snapshot)
 $timer=[Diagnostics.Stopwatch]::StartNew()
