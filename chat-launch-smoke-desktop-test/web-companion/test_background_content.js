@@ -8,7 +8,7 @@ async function simulate(mode){
     hash:"#chat-launch-smoke=bg-"+id,pathname:"/",search:"",
     href:"https://chatgpt.com/#chat-launch-smoke=bg-"+id
   };
-  let attempts=0,clicks=0,time=0,fillCalls=0;
+  let attempts=0,clicks=0,time=0,fillCalls=0,savedAcks=0;
   const editor={ownerDocument:null};
   const messages=[
     {getAttribute:k=>k==="data-message-author-role"?"user":null,textContent:prompt}
@@ -39,7 +39,12 @@ async function simulate(mode){
     if(msg.type==="chat-smoke-get"){
       attempts++;
       if(attempts<4)return {ok:false};
-      return {ok:true,prompt,completionMode:mode==="gated"};
+      return {ok:true,prompt,completionMode:mode==="gated"||mode==="gated_delayed_ack"};
+    }
+    if(msg.type==="chat-smoke-stage"&&msg.stage==="message_saved"&&
+       mode==="gated_delayed_ack"){
+      savedAcks++;
+      return {ok:savedAcks>=3};
     }
     return {ok:true};
   }}};
@@ -79,6 +84,12 @@ async function simulate(mode){
     "saved chat URL reaches worker for report matching");
   assert.equal(gated.received.some(x=>x.type==="chat-smoke-finished"),false,
     "gated tab never self-closes based on DOM or timeout");
+  const delayed=await simulate("gated_delayed_ack");
+  assert.equal(delayed.clicks,1,"lost handoff ACK never replays Send");
+  assert.ok(delayed.received.filter(x=>x.type==="chat-smoke-stage"&&
+    x.stage==="message_saved").length>=3,"saved-stage ACK is retried");
+  assert.equal(delayed.received.some(x=>x.type==="chat-smoke-finished"),false,
+    "loss of saved-stage ACK does not close a report-owned tab");
   const early=await simulate("slow_answer");
   assert.equal(early.clicks,1);
   assert.equal(early.received.find(x=>x.type==="chat-smoke-finished")?.status,"submitted");
