@@ -224,30 +224,60 @@ class MirrorGateTests(unittest.TestCase):
         self.assertEqual(r["status"], "evidence_unknown")
 
     def test_cli_match_returns_zero_and_json(self):
-        output = self.root/"report.json"
+        output = self.root/"mirror-report.json"
         rc = g.main(["--root",str(self.root),"--report",str(output)])
         self.assertEqual(rc,0)
         self.assertEqual(json.loads(output.read_text())["status"],"source_pair_verified")
 
     def test_cli_mismatch_returns_two_and_json(self):
         (self.mirror/"popup.js").write_text("mismatch")
-        output = self.root/"report.json"
+        output = self.root/"mirror-report.json"
         rc = g.main(["--root",str(self.root),"--report",str(output)])
         self.assertEqual(rc,2)
         self.assertEqual(json.loads(output.read_text())["status"],"blocked")
 
     def test_cli_missing_returns_three_and_json(self):
         (self.src/"popup.js").unlink()
-        output = self.root/"report.json"
+        output = self.root/"mirror-report.json"
         rc = g.main(["--root",str(self.root),"--report",str(output)])
         self.assertEqual(rc,3)
         self.assertEqual(json.loads(output.read_text())["status"],"evidence_unknown")
 
     def test_atomic_report_path_only(self):
-        output=self.root/"nested"/"report.json"
+        output=self.root/"nested"/"mirror-report.json"
         g._save_json(output,{"x":1})
         self.assertEqual(json.loads(output.read_text()),{"x":1})
         self.assertFalse(list(output.parent.glob(".mirror-report-*")))
+
+    def test_report_never_overwrites_browser_code(self):
+        target = self.src / "mirror-report.json"
+        self.assertEqual(g.main(["--root",str(self.root),"--report",str(target)]),3)
+        self.assertFalse(target.exists())
+
+    def test_report_never_overwrites_private_config(self):
+        target = self.mirror / "bridge-config.json"
+        target.write_text("user-secret")
+        self.assertEqual(g.main(["--root",str(self.root),"--report",str(target)]),3)
+        self.assertEqual(target.read_text(), "user-secret")
+
+    def test_report_path_traversal_rejected(self):
+        with self.assertRaisesRegex(g.EvidenceUnavailable,"REPORT_PATH_TRAVERSAL"):
+            g._safe_report_target(self.root,Path("../mirror-report.json"))
+
+    def test_report_outside_checkout_rejected(self):
+        with self.assertRaisesRegex(g.EvidenceUnavailable,"REPORT_OUTSIDE_CHECKOUT"):
+            g._safe_report_target(self.root,Path("/tmp/mirror-report.json"))
+
+    def test_report_git_metadata_protected(self):
+        with self.assertRaisesRegex(g.EvidenceUnavailable,"REPORT_PATH_PROTECTED"):
+            g._safe_report_target(self.root,Path(".git/mirror-report.json"))
+
+    def test_report_symlink_target_rejected(self):
+        target=self.root/"mirror-report.json"
+        try: target.symlink_to(self.root/"target-secret")
+        except OSError: self.skipTest("Symlink unavailable")
+        with self.assertRaisesRegex(g.EvidenceUnavailable,"REPORT_SYMLINK"):
+            g._safe_report_target(self.root,target)
 
     def test_large_json_values_not_logged(self):
         evidence = g.inspect(self.root)
