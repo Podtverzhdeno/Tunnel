@@ -9,7 +9,6 @@ or losing the browser never grants a second click.
 """
 from contextlib import contextmanager
 from pathlib import Path
-import os
 import re
 import sqlite3
 import time
@@ -67,6 +66,8 @@ class TemporaryChatLedger:
                     window_id INTEGER,
                     document_epoch TEXT,
                     state TEXT NOT NULL,
+                    ui_proof_nonce TEXT,
+                    ui_proof_at REAL,
                     pause_reason TEXT,
                     created REAL NOT NULL,
                     updated REAL NOT NULL
@@ -119,9 +120,11 @@ class TemporaryChatLedger:
         return row
 
     @staticmethod
-    def _ownership(row, tab_id, document_epoch):
+    def _ownership(row, tab_id, document_epoch, profile_nonce):
         if not isinstance(tab_id, int) or isinstance(tab_id, bool) or tab_id < 0:
             raise SessionConflict("invalid_tab")
+        if row[1] != _nonce(profile_nonce):
+            raise SessionConflict("wrong_browser_profile")
         if row[2] != tab_id or row[4] != _uuid(document_epoch):
             raise SessionConflict("tab_or_document_changed")
 
@@ -139,7 +142,7 @@ class TemporaryChatLedger:
                 raise SessionConflict("duplicate_session_id") from None
         return {"session_id": sid, "state": "CREATED"}
 
-    def bind_tab(self, session_id, tab_id, window_id, document_epoch, url):
+    def bind_tab(self, session_id, tab_id, window_id, document_epoch, url, profile_nonce):
         sid, epoch = _uuid(session_id), _uuid(document_epoch)
         if url != TEMPORARY_URL:
             raise SessionConflict("wrong_initial_url")
@@ -148,14 +151,16 @@ class TemporaryChatLedger:
             or window_id < 0):
             raise SessionConflict("invalid_browser_target")
         with self._tx() as con:
-            self._session(con, sid, "CREATED")
+            row = self._session(con, sid, "CREATED")
+            if row[1] != _nonce(profile_nonce):
+                raise SessionConflict("wrong_browser_profile")
             con.execute(
                 "UPDATE session SET tab_id=?,window_id=?,document_epoch=?,"
                 "state='ATTACHED',updated=? WHERE id=?",
                 (tab_id, window_id, epoch, time.time(), sid)
             )
 
-    def attest_ui(self, session_id, tab_id, document_epoch, *, ui_verified, proof_nonce):
+    def attest_ui(self, session_id, tab_id, document_epoch, profile_nonce, *, ui_verified, proof_nonce):
         """Accept provenance only from a trusted real UI adapter; not URL-derived.
 
         proof_nonce is random per verification, NOT a hash of private UI text.
@@ -167,18 +172,20 @@ class TemporaryChatLedger:
         if ui_verified is not True:
             raise SessionConflict("temporary_ui_not_verified")
         with self._tx() as con:
-            row = self._session(con, sid, "ATTACHED")
-            self._ownership(row, tab_id, document_epoch)
+            row = self._session(con, sid, "ATTACHED", "AWAITING_TEMP_RECHECK", "PRE_SEND")
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
+            next_state = "PRE_SEND" if row[5] == "PRE_SEND" else "TEMP_VERIFIED"
+            now = time.time()
             con.execute(
-                "UPDATE session SET state='TEMP_VERIFIED',updated=? WHERE id=?",
-                (time.time(), sid)
+                "UPDATE session SET state=?,ui_proof_nonce=?,ui_proof_at=?,"
+                "updated=? WHERE id=?", (next_state, nonce, now, now, sid)
             )
 
-    def prepare_request(self, session_id, request_id, tab_id, document_epoch):
+    def prepare_request(self, session_id, request_id, tab_id, document_epoch, profile_nonce):
         sid, rid = _uuid(session_id), _uuid(request_id)
         with self._tx() as con:
-            row = self._session(con, sid, "TEMP_VERIFIED", "IDLE")
-            self._ownership(row, tab_id, document_epoch)
+            row = self._session(con, sid, "TEMP_VERIFIED")
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
             now = time.time()
             try:
                 con.execute(
@@ -190,7 +197,7 @@ class TemporaryChatLedger:
             con.execute("UPDATE session SET state='PRE_SEND',updated=? WHERE id=?",
                         (now, sid))
 
-    def arm_one_send(self, session_id, request_id, tab_id, document_epoch):
+    def arm_one_send(self, session_id, request_id, tab_id, document_epoch, profile_nonce):
         """Commit ARMED before granting exactly one caller-side click.
 
         If the process fails between this commit and actual browser click,
@@ -199,7 +206,11 @@ class TemporaryChatLedger:
         sid, rid = _uuid(session_id), _uuid(request_id)
         with self._tx() as con:
             row = self._session(con, sid, "PRE_SEND")
-            self._ownership(row, tab_id, document_epoch)
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
+            proof_at = con.execute("SELECT ui_proof_at FROM session WHERE id=?", (sid,)).fetchone()[0]
+            age = time.time() - proof_at if proof_at is not None else 999999
+            if age < 0 or age > 10:
+                raise SessionConflict("stale_temporary_ui_attestation")
             cur = con.execute(
                 "UPDATE request SET state='ARMED',updated=? WHERE id=? "
                 "AND session_id=? AND state='PREPARED'",
@@ -212,12 +223,12 @@ class TemporaryChatLedger:
         return {"request_id": rid, "authorization": "ONE_CLICK_ONLY"}
 
     def observe_user_turn(self, session_id, request_id, tab_id, document_epoch,
-                          evidence_nonce):
+                          profile_nonce, evidence_nonce):
         sid, rid = _uuid(session_id), _uuid(request_id)
         proof = _nonce(evidence_nonce)
         with self._tx() as con:
             row = self._session(con, sid, "SEND_ARMED")
-            self._ownership(row, tab_id, document_epoch)
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
             cur = con.execute(
                 "UPDATE request SET state='USER_CONFIRMED',evidence_nonce=?,"
                 "updated=? WHERE id=? AND session_id=? AND state='ARMED'",
@@ -229,15 +240,16 @@ class TemporaryChatLedger:
                         (time.time(), sid))
 
     def observe_response(self, session_id, request_id, tab_id, document_epoch,
-                         response_receipt):
+                         profile_nonce, response_receipt):
         sid, rid = _uuid(session_id), _uuid(request_id)
         if not isinstance(response_receipt, str) or not _HASH.fullmatch(response_receipt):
             raise SessionConflict("invalid_response_receipt")
-        # Caller must bind this receipt to the exact request before invoking.
-        # A plain DOM answer is not intrinsically evidence of request ownership.
+        # Receipt should be a random opaque digest-sized identifier, NOT a
+        # hash of short private response text. The trusted adapter must bind
+        # it to this exact request; a DOM answer alone is not sufficient.
         with self._tx() as con:
             row = self._session(con, sid, "WAITING_ANSWER")
-            self._ownership(row, tab_id, document_epoch)
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
             cur = con.execute(
                 "UPDATE request SET state='RESPONSE_CONFIRMED',response_receipt=?,"
                 "updated=? WHERE id=? AND session_id=? AND state='USER_CONFIRMED'",
@@ -248,11 +260,11 @@ class TemporaryChatLedger:
             con.execute("UPDATE session SET state='AWAITING_RESULT_ACK',updated=? WHERE id=?",
                         (time.time(), sid))
 
-    def acknowledge_result(self, session_id, request_id, tab_id, document_epoch):
+    def acknowledge_result(self, session_id, request_id, tab_id, document_epoch, profile_nonce):
         sid, rid = _uuid(session_id), _uuid(request_id)
         with self._tx() as con:
             row = self._session(con, sid, "AWAITING_RESULT_ACK")
-            self._ownership(row, tab_id, document_epoch)
+            self._ownership(row, tab_id, document_epoch, profile_nonce)
             cur = con.execute(
                 "UPDATE request SET state='ACKED',updated=? WHERE id=? "
                 "AND session_id=? AND state='RESPONSE_CONFIRMED'",
@@ -260,8 +272,10 @@ class TemporaryChatLedger:
             )
             if cur.rowcount != 1:
                 raise SessionConflict("result_ack_disputed")
-            con.execute("UPDATE session SET state='IDLE',updated=? WHERE id=?",
-                        (time.time(), sid))
+            # The next Send must have a FRESH observation of Temporary UI;
+            # keeping TEMP_VERIFIED across turns would allow a silent mode flip.
+            con.execute("UPDATE session SET state='AWAITING_TEMP_RECHECK',"
+                        "ui_proof_at=NULL,updated=? WHERE id=?", (time.time(), sid))
 
     def pause_if_browser_lost(self, session_id, *, reason):
         sid = _uuid(session_id)
