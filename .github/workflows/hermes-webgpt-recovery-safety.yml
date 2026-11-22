@@ -1,0 +1,37 @@
+name: Hermes Web Companion recovery safety
+
+on:
+  pull_request:
+    paths:
+      - 'chat-launch-smoke-desktop-test/web-companion/bridge.py'
+      - 'chat-launch-smoke-desktop-test/web-companion/test_bridge.py'
+      - '.github/workflows/hermes-webgpt-recovery-safety.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'chat-launch-smoke-desktop-test/web-companion/bridge.py'
+      - 'chat-launch-smoke-desktop-test/web-companion/test_bridge.py'
+      - '.github/workflows/hermes-webgpt-recovery-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-safety:
+    name: Web Companion bridge on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile bridge and regression suite
+        run: python -m py_compile chat-launch-smoke-desktop-test/web-companion/bridge.py chat-launch-smoke-desktop-test/web-companion/test_bridge.py
+      - name: Run authenticated bridge HTTP and recovery regression tests
+        working-directory: chat-launch-smoke-desktop-test/web-companion
+        run: python -m unittest -v test_bridge.ServerTests
