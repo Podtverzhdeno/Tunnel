@@ -7,6 +7,7 @@ async function simulate({count=10,windows=1,longPrompt=false,completion=false,
   realCap=false,removeFails=false,emitRemovedDuringRemove=false}={}){
   const events={},stored={},local={},tabs=new Map(),logs=[],ackById=new Map(),results=[],tabIdentity=new Map(),acceptedById=new Map();
   let failRemove=removeFails;
+  let tabQueries=0;
   let now=1000000;
   let queue=Array.from({length:count},(_,i)=>({
     id:idAt(i),prompt:longPrompt?"Long research task "+("x".repeat(220))+i:"agent "+i,
@@ -37,7 +38,7 @@ async function simulate({count=10,windows=1,longPrompt=false,completion=false,
     alarms:{create(){},onAlarm:{addListener:f=>events.alarm=f}},
     windows:{getAll:async()=>Array.from({length:windows},(_,i)=>({id:100+i}))},
     tabs:{
-      query:async()=>[...tabs.values()].map(t=>({...t,url:t.url.startsWith("https://chatgpt.com/c/")?t.url:"https://chatgpt.com/c/test"+t.id})),
+      query:async()=>{tabQueries++;return [...tabs.values()].map(t=>({...t,url:t.url.startsWith("https://chatgpt.com/c/")?t.url:"https://chatgpt.com/c/test"+t.id}));},
       create:async props=>{
         const id=300+logs.filter(x=>x.type==="opened").length;
         tabs.set(id,{...props,id});
@@ -100,6 +101,7 @@ async function simulate({count=10,windows=1,longPrompt=false,completion=false,
   // Wait for all async IO in the mocked poll, without external timers.
   for(let i=0;i<60;i++)await new Promise(r=>setImmediate(r));
   return{events,stored,local,tabs,logs,queue,ackById,results,tabIdentity,
+    tabQueries(){return tabQueries;},
     advance(ms){now+=ms;},
     setRemoveFails(value){failRemove=Boolean(value);},
     setCloseEligible(id,value){
@@ -118,6 +120,21 @@ async function send(ext,message,tabId){
   });
 }
 (async()=>{
+  // Scan all ChatGPT DOMs once after startup, but NOT on every 30-second
+  // queue alarm. ACK polling and new work must still run on each alarm.
+  const throttled=await simulate({count:1,completion:true});
+  assert.equal(throttled.tabQueries(),1,"startup performs one recovery scan");
+  throttled.events.alarm({name:"chat-smoke-queue"});
+  for(let i=0;i<60;i++)await new Promise(r=>setImmediate(r));
+  assert.equal(throttled.tabQueries(),1,"alarm does not rescan all ChatGPT tabs");
+  throttled.advance(119999);
+  throttled.events.alarm({name:"chat-smoke-queue"});
+  for(let i=0;i<60;i++)await new Promise(r=>setImmediate(r));
+  assert.equal(throttled.tabQueries(),1,"recovery timestamp survives alarm rounds");
+  throttled.advance(1);
+  throttled.events.alarm({name:"chat-smoke-queue"});
+  for(let i=0;i<60;i++)await new Promise(r=>setImmediate(r));
+  assert.equal(throttled.tabQueries(),2,"recovery runs when bounded interval expires");
   const ext=await simulate();
   assert.equal(ext.tabs.size,2);
   assert.equal(ext.logs.filter(x=>x.type==="opened"&&x.active===false).length,2);
