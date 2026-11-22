@@ -117,7 +117,7 @@
       // A saved /c/ route can coexist with an account-change failure toast.
       // Never treat that DOM route alone as proof of server acceptance.
       if(accountConflict()){await rejectAccountConflict();return;}
-      if(seenUserMessage(head)){
+      if(!wasCommitted&&seenUserMessage(head)){
         if(!committedAt){
           committedAt=Date.now();wasCommitted=true;
           await stage("message_saved");
@@ -128,7 +128,9 @@
           // Retain the ChatGPT tab until the local bridge validates an
           // external MCP report and returns a durable scoped ACK.
           // A visible assistant answer is NOT a completion certificate.
-          await nap(500);
+          // The service worker checks report ACKs every 30s; this page no
+          // longer needs to query the DOM twice a second after persistence.
+          await nap(3000);
           continue;
         }
         const assistants=document.querySelectorAll(
