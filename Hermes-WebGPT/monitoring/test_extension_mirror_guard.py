@@ -219,6 +219,14 @@ class MirrorGateTests(unittest.TestCase):
         self.assertEqual(r["file"], "popup.js")
         self.assertFalse(r["runtime_verified"])
 
+    def test_git_pathspec_has_platform_independent_separators(self):
+        # Executing real Git HEAD binding on Windows in CI covers pathspec
+        # normalization as well as source pairing, not just string equality.
+        paths = [(folder / name).as_posix() for folder in (g.SOURCE, g.COPY)
+                 for name in g.PAIR]
+        self.assertTrue(all("\\\\" not in path for path in paths))
+        self.assertEqual(len(paths),14)
+
     def test_sanitized_incident_unknown_not_healthy(self):
         r = g._incident(g.EvidenceUnavailable("EVIDENCE_READ_FAILED"), None)
         self.assertEqual(r["status"], "evidence_unknown")
@@ -266,7 +274,7 @@ class MirrorGateTests(unittest.TestCase):
 
     def test_report_outside_checkout_rejected(self):
         with self.assertRaisesRegex(g.EvidenceUnavailable,"REPORT_OUTSIDE_CHECKOUT"):
-            g._safe_report_target(self.root,Path("/tmp/mirror-report.json"))
+            g._safe_report_target(self.root,self.root.parent/"mirror-report.json")
 
     def test_report_git_metadata_protected(self):
         with self.assertRaisesRegex(g.EvidenceUnavailable,"REPORT_PATH_PROTECTED"):
