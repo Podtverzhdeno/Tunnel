@@ -122,4 +122,15 @@ promptNode.textContent="Describe the account changed error";
 check(c.detectAccountConflict(doc([promptNode])),false);
 const diagnostic=c.diagnostics(d);
 check(diagnostic.roots,1);check(diagnostic.editables,1);
+// Repeated waits on the same document must not traverse every DOM node at
+// each tick. This contract does not cache editable/send-control selection.
+const cacheDoc=doc([plain]);let deepScans=0;
+const originalQuery=cacheDoc.querySelectorAll.bind(cacheDoc);
+cacheDoc.querySelectorAll=selector=>{
+  if(selector==="*")deepScans++;
+  return originalQuery(selector);
+};
+check(c.findEditor(cacheDoc),plain);
+check(c.findEditor(cacheDoc),plain);
+check(deepScans,1);
 console.log("PASS: "+checks+" assertions; selector, shadow DOM, rich-text, readonly, send, reentry");
