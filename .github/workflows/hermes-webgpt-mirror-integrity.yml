@@ -1,6 +1,9 @@
 name: Hermes WebGPT extension mirror integrity (read-only)
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -8,6 +11,11 @@ on:
     - cron: '19 5,17 * * *'
 permissions:
   contents: read
+concurrency:
+  # Superseded revisions should not consume the whole agent CI budget.
+  # Cancelled/stale checks never imply successful review of a newer SHA.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   check-source-pair:
     strategy:
