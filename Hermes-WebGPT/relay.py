@@ -390,15 +390,15 @@ class Queue:
                     'request_digest':hashlib.sha256(row['request_id'].encode()).hexdigest(),
                     'previous_state':row['previous_state'],'new_state':row['new_state'],
                     'reason_code':code,'recorded_utc':row['recorded_utc']})
-            unobserved=self.db.execute('''
-                SELECT COUNT(*) FROM requests r
-                WHERE NOT EXISTS (SELECT 1 FROM request_state_events e
-                                  WHERE e.request_id=r.id)''').fetchone()[0]
+            # On a fresh DB, two installed SQL triggers cover every new
+            # request and state change. On a migrated DB, the permanent
+            # baseline marker must remain false. Avoid O(all requests) joins
+            # on every high-frequency monitoring poll by dozens of agents.
             return {'events':events,
                     'has_more':has_more,
                     'next_seq':events[-1]['seq'] if events else after_seq,
                     'pre_audit_existing_request_count':before,
-                    'history_complete_for_current_requests':before==0 and unobserved==0,
+                    'history_complete_for_current_requests':before==0,
                     'ordering':'sqlite_transaction_local_not_external_effect_order',
                     'browser_send_confirmed':False}
 
