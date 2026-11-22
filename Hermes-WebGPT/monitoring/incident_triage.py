@@ -154,7 +154,7 @@ def triage_report(report):
     obs = report.get('observation')
     if obs == 'unavailable':
         code = report.get('error')
-        if code not in UNAVAILABLE_CODES:
+        if not isinstance(code, str) or code not in UNAVAILABLE_CODES:
             code = 'unclassified_observation_error'
         return {
             'schema_version': 1, 'status': 'observation_unavailable',
@@ -172,7 +172,8 @@ def triage_report(report):
         raise TriageError('invalid_alerts')
     issues = []
     for alert in alerts:
-        if not isinstance(alert, Mapping) or alert.get('code') not in ALERT_CODES:
+        if (not isinstance(alert, Mapping) or not isinstance(alert.get('code'), str)
+                or alert.get('code') not in ALERT_CODES):
             raise TriageError('unsupported_alert')
         code = alert['code']
         if code == 'failure_history_without_baseline':
@@ -181,13 +182,15 @@ def triage_report(report):
                                  action='establish_local_baseline_and_review_history'))
         elif code == 'new_failures_since_snapshot':
             entries = alert.get('counts')
-            if not isinstance(entries, Mapping) or len(entries) > 256:
+            if (not isinstance(entries, Mapping) or len(entries) > 256
+                    or any(not isinstance(k, str) for k in entries)):
                 raise TriageError('invalid_failure_counts')
             for key, count in sorted(entries.items()):
                 issues.append(_classify_failure(key, _nonnegative_int(count)))
         else:
             states = alert.get('states')
-            if not isinstance(states, Mapping) or len(states) > len(STATES):
+            if (not isinstance(states, Mapping) or len(states) > len(STATES)
+                    or any(not isinstance(k, str) for k in states)):
                 raise TriageError('invalid_age_states')
             for state, detail in sorted(states.items()):
                 if state not in ACTIVE_STATES or not isinstance(detail, Mapping):
