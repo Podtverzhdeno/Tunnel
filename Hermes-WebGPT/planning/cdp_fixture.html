@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes Playwright offline fixture</title>
+<style>
+body {font:16px system-ui,sans-serif;margin:2rem auto;max-width:760px;padding:0 1rem}
+main {display:grid;gap:1rem} textarea {width:100%;min-height:110px;box-sizing:border-box}
+#conversation {min-height:120px;padding:1rem;border:1px solid #bbb;border-radius:8px}
+.turn {padding:.5rem;margin:.3rem 0;white-space:pre-wrap}
+[data-speaker="user"]{background:#e8f3ff}[data-speaker="assistant"]{background:#eef6e9}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+<main id="fixture" data-fixture-only="true" data-chat-id="fixture-chat-a" data-state="ready">
+<h1>Hermes UI Fixture — только локальное тестирование</h1>
+<p>Синтетическая страница. Не является ChatGPT и не обращается к внешним сервисам.</p>
+<section id="gate" hidden role="alert"></section>
+<label for="model">Режим</label>
+<select id="model" aria-label="Режим"><option value="High">High</option><option value="Normal">Normal</option></select>
+<div id="conversation" role="log" aria-label="Разговор" data-testid="conversation"></div>
+<label for="composer">Сообщение</label>
+<textarea id="composer" aria-label="Сообщение"></textarea>
+<button type="button" id="send" aria-label="Отправить">Отправить</button>
+<span id="generation" role="status" data-testid="generation-status">Готов</span>
+</main>
+<script>
+"use strict";
+(() => {
+  // This test harness is deliberately restricted to a local synthetic page.
+  // It never calls fetch, XHR, WebSocket, external APIs or service workers.
+  const args = new URLSearchParams(location.search);
+  const scenario = args.get("case") || "ready";
+  const root = document.getElementById("fixture");
+  const gate = document.getElementById("gate");
+  const mode = document.getElementById("model");
+  const composer = document.getElementById("composer");
+  const send = document.getElementById("send");
+  const conversation = document.getElementById("conversation");
+  const status = document.getElementById("generation");
+  if (scenario === "login" || scenario === "challenge") {
+    root.dataset.state = scenario;
+    gate.hidden = false;
+    gate.textContent = scenario === "login" ? "Требуется вход владельца" : "Требуется проверка владельца; автоматический обход запрещён";
+    composer.disabled = true;
+    send.disabled = true;
+  }
+  if (scenario === "missing_composer") { composer.remove(); root.dataset.state = "unsupported"; }
+  if (scenario === "missing_send") { send.remove(); root.dataset.state = "unsupported"; }
+  if (scenario === "duplicate_send") {
+    const second = send.cloneNode(true);
+    second.id = "send-second";
+    send.after(second);
+  }
+  if (scenario === "normal_mode") mode.value = "Normal";
+  if (scenario === "missing_mode") mode.remove();
+  if (scenario === "disabled_send") send.disabled = true;
+
+  function addTurn(speaker, content) {
+    const elt = document.createElement("div");
+    elt.className = "turn";
+    elt.dataset.testid = speaker + "-turn";
+    elt.dataset.speaker = speaker;
+    elt.textContent = content; // no HTML injection
+    conversation.append(elt);
+  }
+  function onSend() {
+    if (root.dataset.state !== "ready") return;
+    if (send.disabled || !composer.isConnected || !composer.value) return;
+    const prompt = composer.value;
+    root.dataset.state = "generating";
+    root.dataset.sendCount = String(Number(root.dataset.sendCount || "0") + 1);
+    addTurn("user", prompt);
+    if (scenario === "duplicate_saved") addTurn("user", prompt);
+    if (scenario === "wrong_chat") root.dataset.chatId = "fixture-chat-b";
+    composer.value = "";
+    status.textContent = "Генерация";
+    if (scenario === "never_finish") return;
+    const id = prompt.match(/"request_id"\s*:\s*"([a-zA-Z0-9-]+)"/);
+    const envelope = JSON.stringify({
+      request_id: id ? id[1] : "fixture-no-request-id",
+      content: "LOCAL_FIXTURE_OK",
+      tool_calls: []
+    });
+    setTimeout(() => {
+      addTurn("assistant", envelope);
+      root.dataset.state = "done";
+      status.textContent = "Готово";
+    }, scenario === "slow" ? 3000 : 150);
+  }
+  if (send.isConnected) send.addEventListener("click", onSend);
+})();
+</script>
+</body>
+</html>
