@@ -35,6 +35,31 @@ class SamplerTests(unittest.TestCase):
             state = s.run_cycle(self.source, self.journal, now=1000, **kwargs)
             return state, observe
 
+    def test_wal_startup_retries_only_bounded_initialization_locks(self):
+        class FakeDb:
+            attempts = 0
+            def execute(self, sql):
+                self.attempts += 1
+                if self.attempts <= 2:
+                    raise sqlite3.OperationalError('database is locked')
+                class Cursor:
+                    def fetchone(self): return ('wal',)
+                return Cursor()
+        db = FakeDb()
+        with patch.object(s.time, 'sleep') as sleep:
+            s._enable_wal(db)
+        self.assertEqual(db.attempts, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_wal_startup_never_accepts_delete_mode(self):
+        class FakeDb:
+            def execute(self, sql):
+                class Cursor:
+                    def fetchone(self): return ('delete',)
+                return Cursor()
+        with self.assertRaisesRegex(s.SamplerError, 'journal_mode_not_wal'):
+            s._enable_wal(FakeDb())
+
     def test_atomic_cycle_stores_baseline_and_event(self):
         report, _ = self.runmock()
         self.assertEqual(report['status'], 'no_queue_alerts_observed')
