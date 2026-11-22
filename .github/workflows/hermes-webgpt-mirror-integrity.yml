@@ -44,3 +44,18 @@ jobs:
           path: webgpt-mirror-report.json
           retention-days: 7
           if-no-files-found: ignore
+  mock-browser-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run offline Web Companion DOM, send and recovery regression tests
+        working-directory: chat-launch-smoke-desktop-test/web-companion
+        run: |
+          node test_core.js
+          node test_background_content.js
+          node test_background.js
+          node test_recovery.js
