@@ -6,6 +6,7 @@ on:
       - "chat-launch-smoke-desktop-test/web-companion/**"
       - "chat-launch-smoke-desktop-test/web-extension/**"
       - "Hermes-WebGPT/Start-Hermes-Edge.ps1"
+      - "Hermes-WebGPT/Diagnose-Hermes-Edge.ps1"
       - "docs/HERMES_EDGE_AUTOPILOT_LIFECYCLE_CPU_20261122.md"
       - ".github/workflows/hermes-edge-autopilot-qa.yml"
   workflow_dispatch:
@@ -37,14 +38,17 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tokens = $null
           $parseErrors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'Hermes-WebGPT/Start-Hermes-Edge.ps1').Path,
-            [ref]$tokens, [ref]$parseErrors)
-          if ($parseErrors.Count -gt 0) {
-            $parseErrors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($script in @('Hermes-WebGPT/Start-Hermes-Edge.ps1',
+                                'Hermes-WebGPT/Diagnose-Hermes-Edge.ps1')) {
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
           }
-          Write-Output 'PASS: PowerShell syntax; launcher was NOT executed'
+          Write-Output 'PASS: PowerShell syntax; neither script was executed'
       - name: Require source/build mirror equality
         shell: pwsh
         run: |
