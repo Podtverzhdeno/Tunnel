@@ -157,3 +157,21 @@ T15: Безопасное удаление/перезапуск без дест�
 ## 11. Release decision
 
 CURRENT: DRAFT / NO-GO на production rollout Temporary Hermes transport. Причины: нет live validation Temporary UI, нет реального Windows PID/CPU baseline, не завершён новый session-ownership protocol, нет живого Telegram delivery. Все эти ограничения должны остаться в PR до подтверждения тестов; ничего не маскировать фразой «исправлено полностью».
+
+
+## 12. Дополнительная оптимизация MV3 и результаты CI
+
+После первого аудита найден более частый источник фоновой работы, чем `roots()`: `background.js` запускает полный `recoverOrphanedTabs()` на каждом сигнале тревоги (~30 секунд), сканирует все ChatGPT-вкладки и внедряет диагностический JS в каждую подходящую вкладку. В рабочей ветке оба зеркала `background.js` изменены:
+
+- `RECOVERY_SCAN_GAP_MS=120000` — не чаще одного полного скана за 120 секунд, если часовое время идёт вперёд;
+- `chatSmokeLastRecoveryScanAt` в `chrome.storage.session` переживает выгрузку и повторный старт MV3 service worker, в отличие от переменной в JS-памяти;
+- сначала записывается отметка, потом запускается обход, чтобы соседние вызовы `poll()` не могли сразу повторить тяжёлую операцию;
+- по окончании интервала полноценный скан повторяется; после холодного старта или очистки session storage он доступен немедленно;
+- частота `poll()`, проверки `/v1/ack`, приём новых jobs и защита `noReplay` НЕ снижены;
+- не изменены `chrome.tabs.remove` и существующая /c/-bound release policy для старого smoke режима. Это **ещё не** реализация требования «временный чат никогда не закрывать».
+
+`web-companion/test_background.js` дополнен сценарием: первый скан происходит после старта; два ранних alarm не создают новое сканирование; при достижении 120000 мс восстановительный скан происходит снова. Существующий `test_recovery.js` продолжает проверять установление принадлежности и однократное закрытие только своего старого сохранённого диалога.
+
+Проверка исходников GitHub Actions, Linux: `test_core.js`, `test_background_content.js`, `test_background.js`, `test_recovery.js` и `python -m unittest discover -s Hermes-WebGPT -p 'test_*.py'` — успешна. GitHub Actions, Windows: оригинальные PowerShell 5.1 parser checks для `Start-Hermes-Edge-Temporary.ps1` и `Measure-Hermes-Edge-CPU.ps1` — успешны. **Парсинг PowerShell не означает запуск Edge или замер CPU.** Подтверждение: https://github.com/Podtverzhdeno/Tunnel/actions/runs/45013026259
+
+Важно: теоретическое уменьшение интенсивности полного обхода в 4 раза (120 секунд вместо 30) не эквивалентно уменьшению общего CPU в 4 раза. Неизвестна доля полного recovery в общей нагрузке. Для количественной оценки нужны Windows-срезы и Edge Task Manager.
