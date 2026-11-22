@@ -25,6 +25,19 @@ The code inspected here binds completed ChatGPT tasks to ordinary persisted `htt
 
 The *window vanished* incident must be classified as one of: (A) final tab closed, (B) browser process exited/crashed, (C) a CDP owner terminated the browser, (D) user/OS closed the window, (E) login/profile handoff moved the visible tab to another process/window. These are different defects and require different fixes.
 
+### Additional confirmed source: native Hermes browser cleanup
+
+The **separate, older** `Podtverzhdeno/hermes-agent` fork contains a destructive browser cleanup path in `tools/browser_tool.py`, independent from Web Companion:
+
+- `BROWSER_INACTIVITY_TIMEOUT` defaults to **300 seconds**; its background thread checks periodically (~30s).
+- `browser_close()` and process-exit `_emergency_cleanup_all_sessions()` both lead to `cleanup_browser(task_id)`.
+- Until the separate candidate patch, cleanup unconditionally issued agent-browser `close` and attempted `os.kill(daemon_pid, signal.SIGTERM)`.
+- A user-supplied external CDP Edge session is flagged `features.cdp_override=true`, but cleanup previously did not distinguish browser ownership.
+
+A second draft fix, [`Podtverzhdeno/hermes-agent#15`](https://github.com/Podtverzhdeno/hermes-agent/pull/15), makes cleanup **non-destructive for externally attached CDP**, preserving locally owned process cleanup. It may leave an agent-browser CDP proxy daemon pending a future ownership-proven disconnect; it never justifies killing a PID that has not been independently identified. This is **not evidence** the actual Windows runtime loads that dated fork.
+
+An apparently closed browser can originate from **(A)** deleting the last MV3 task tab, **(B)** native Hermes idle/exit/explicit cleanup, or **(C)** Playwright/CDP ownership and process exit. These are separate root causes. Do not declare the incident fixed until the user's Windows process trace identifies the actual cause.
+
 ## 2. Implemented candidate changes
 
 In `web-companion/background.js`, mirrored byte-for-byte to `web-extension/background.js`:
