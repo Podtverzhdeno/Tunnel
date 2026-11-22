@@ -54,7 +54,7 @@ test("recovery throttle scans first, skips immediate repeat, resumes later",asyn
   const segment=extract("const RECOVERY_SCAN_INTERVAL_MS=120000;","async function hasAnotherTabInWindow(tabId){");
   const fnSrc=extract("async function recoverOrphansIfDue(){","let runningPoll=null;").trim();
   // Restrict extraction to helper body and exclude the following top-level declarations.
-  const fn=fnSrc.slice(0,fnSrc.lastIndexOf("}\n")+2);
+  const fn=fnSrc;
   assert.match(fn,/async function recoverOrphansIfDue/);
   const factory=new Function("chrome","Date","recoverOrphanedTabs",
      segment+"\n"+fn+"\nreturn recoverOrphansIfDue;");
