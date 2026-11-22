@@ -27,7 +27,7 @@
 
 ## SIWC: ограничения preview, влияющие на наш Relay
 
-Поддерживаемый прямой поток — Responses API, с store=false и stream=true; подтверждение итога только по response.completed. Частичный текст до response.failed/reponse.incomplete не считается финальным Telegram-ответом. Не использовать previous_response_id, persistent conversation, temperature, top_p, max_output_tokens, metadata, background и другие неподдерживаемые preview-поля. Для каждого HTTP turn включать всю нужную историю в input; отдельные developer инструкции вместо явных system-items. Поддерживается ограниченный набор function/custom tools в разрешённой форме; нет hosted MCP, file_search, Code Interpreter, native computer_use или tool_search на этом маршруте. Учитывать фактические ограничения модели и владельческого workspace.
+Поддерживаемый прямой поток — Responses API, с store=false и stream=true; подтверждение итога только по response.completed. Частичный текст до response.failed/response.incomplete не считается финальным Telegram-ответом. Не использовать previous_response_id, persistent conversation, temperature, top_p, max_output_tokens, metadata, background и другие неподдерживаемые preview-поля. Для каждого HTTP turn включать всю нужную историю в input; отдельные developer инструкции вместо явных system-items. Поддерживается ограниченный набор function/custom tools в разрешённой форме; нет hosted MCP, file_search, Code Interpreter, native computer_use или tool_search на этом маршруте. Учитывать фактические ограничения модели и владельческого workspace.
 
 Отсутствие chatgpt.tokens.use.direct = отсутствие права отправлять по подписке; auth identity само по себе недостаточно. Ошибка 429 subscription_sharing_usage_limit_exceeded требует приостановки канала, а не обхода ограничений другой учётной записью. Нельзя незаметно переключаться на платный API ключ. Отозванные credentials следует считать недействительными; временный 503 сам по себе не доказывает отзыв. Для hosted/paid распределённых программ OSS-сценарий не предназначен без дополнительного согласования.
 
@@ -46,13 +46,13 @@ Hermes-WebGPT/relay.py уже содержит два веб-маршрута ex
 ## Изолированные воспроизводимые эксперименты (2026-11-22)
 
 Создан отдельный lab bundle, без приватных данных и каких-либо production modifications:
-- route_guard.py: immutable binding, persisted at-most-once effect reserve, recovery, wrong chat, no post-intent replay — **17 unit tests PASS**.
+- route_guard.py: immutable binding, persisted at-most-once effect reserve, recovery, wrong chat, no post-intent replay — **19 unit tests PASS**.
 - preflight.py: read-only обнаружение CLI и доступных бинарников, опционально лишь codex login status без печати credentials — **5 tests PASS**.
 - codex_appserver_protocol.py: synthetic JSON-RPC lifecycle, exact thread/turn, incomplete events, no auto-approval — **11 tests PASS**.
 - siwc_responses_protocol.py: unsupported body fields, store=false/stream=true, complete vs incomplete/failed, cross-response identity — **15 tests PASS**.
 - browser_cdp_fixture.py: реальный локальный Chromium с отдельным temporary --user-data-dir, синтетический DOM, единственный fake Send, CDP disconnect/reconnect, ручной черновик другой вкладки сохранён — **PASS**.
 
-Итого: **48/48 unit tests + 1 synthetic Chromium CDP smoke PASS**. Ни одна из проверок не обращалась к ChatGPT, OpenAI Responses, реальной авторизации или Telegram. На тестовом окружении codex/hermes CLI не установлены. Эксперименты по своим mocked contracts не равны conformance тесту поставщика.
+Итого: **50/50 unit tests + 1 synthetic Chromium CDP smoke PASS**. Ни одна из проверок не обращалась к ChatGPT, OpenAI Responses, реальной авторизации или Telegram. На тестовом окружении codex/hermes CLI не установлены. Эксперименты по своим mocked contracts не равны conformance тесту поставщика.
 
 В этот заход Local Workspace MCP вернул Session terminated. Живую версию на Windows, текущие PID, OAuth, Telegram delivery и соответствие установленного Relay GitHub SHA мы **НЕ проверили**. Не выдавать репозиторий или unit tests за live E2E.
 
