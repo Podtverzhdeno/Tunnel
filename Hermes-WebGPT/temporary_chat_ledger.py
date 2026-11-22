@@ -82,6 +82,16 @@ class TemporaryChatLedger:
                     updated REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS request_session ON request(session_id);
+                CREATE UNIQUE INDEX IF NOT EXISTS request_user_evidence_unique
+                    ON request(evidence_nonce) WHERE evidence_nonce IS NOT NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS request_response_receipt_unique
+                    ON request(response_receipt) WHERE response_receipt IS NOT NULL;
+                CREATE TABLE IF NOT EXISTS ui_attestation (
+                    nonce TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES session(id),
+                    document_epoch TEXT NOT NULL,
+                    observed REAL NOT NULL
+                );
             """)
 
     @contextmanager
@@ -176,6 +186,13 @@ class TemporaryChatLedger:
             self._ownership(row, tab_id, document_epoch, profile_nonce)
             next_state = "PRE_SEND" if row[5] == "PRE_SEND" else "TEMP_VERIFIED"
             now = time.time()
+            try:
+                con.execute(
+                    "INSERT INTO ui_attestation(nonce,session_id,document_epoch,observed)"
+                    "VALUES(?,?,?,?)", (nonce, sid, row[4], now)
+                )
+            except sqlite3.IntegrityError:
+                raise SessionConflict("ui_attestation_nonce_replayed") from None
             con.execute(
                 "UPDATE session SET state=?,ui_proof_nonce=?,ui_proof_at=?,"
                 "updated=? WHERE id=?", (next_state, nonce, now, now, sid)
@@ -229,11 +246,14 @@ class TemporaryChatLedger:
         with self._tx() as con:
             row = self._session(con, sid, "SEND_ARMED")
             self._ownership(row, tab_id, document_epoch, profile_nonce)
-            cur = con.execute(
-                "UPDATE request SET state='USER_CONFIRMED',evidence_nonce=?,"
-                "updated=? WHERE id=? AND session_id=? AND state='ARMED'",
-                (proof, time.time(), rid, sid)
-            )
+            try:
+                cur = con.execute(
+                    "UPDATE request SET state='USER_CONFIRMED',evidence_nonce=?,"
+                    "updated=? WHERE id=? AND session_id=? AND state='ARMED'",
+                    (proof, time.time(), rid, sid)
+                )
+            except sqlite3.IntegrityError:
+                raise SessionConflict("user_evidence_replayed") from None
             if cur.rowcount != 1:
                 raise SessionConflict("user_turn_ownership_disputed")
             con.execute("UPDATE session SET state='WAITING_ANSWER',updated=? WHERE id=?",
@@ -250,11 +270,14 @@ class TemporaryChatLedger:
         with self._tx() as con:
             row = self._session(con, sid, "WAITING_ANSWER")
             self._ownership(row, tab_id, document_epoch, profile_nonce)
-            cur = con.execute(
-                "UPDATE request SET state='RESPONSE_CONFIRMED',response_receipt=?,"
-                "updated=? WHERE id=? AND session_id=? AND state='USER_CONFIRMED'",
-                (response_receipt, time.time(), rid, sid)
-            )
+            try:
+                cur = con.execute(
+                    "UPDATE request SET state='RESPONSE_CONFIRMED',response_receipt=?,"
+                    "updated=? WHERE id=? AND session_id=? AND state='USER_CONFIRMED'",
+                    (response_receipt, time.time(), rid, sid)
+                )
+            except sqlite3.IntegrityError:
+                raise SessionConflict("response_receipt_replayed") from None
             if cur.rowcount != 1:
                 raise SessionConflict("response_ownership_disputed")
             con.execute("UPDATE session SET state='AWAITING_RESULT_ACK',updated=? WHERE id=?",
