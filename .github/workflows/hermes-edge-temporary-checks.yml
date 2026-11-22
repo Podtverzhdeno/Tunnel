@@ -28,6 +28,8 @@ jobs:
           node chat-launch-smoke-desktop-test/web-companion/test_background.js
           node chat-launch-smoke-desktop-test/web-companion/test_recovery.js
           node chat-launch-smoke-desktop-test/web-companion/test_popup_temporary.js
+      - name: Hermes 0.9.7 true-transport fail-closed fixture
+        run: node Hermes-WebGPT/patches/edge-temporary-20261122/test_hermes_bg_fail_closed.cjs
       - name: Compare packaged and source extension code
         run: |
           python3 - <<'PY'
