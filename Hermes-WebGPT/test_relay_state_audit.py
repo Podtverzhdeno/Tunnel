@@ -170,6 +170,27 @@ class AuditTransitionTests(unittest.TestCase):
             thread.join(timeout=3)
             server.server_close()
 
+    def test_storage_failure_in_audit_get_reports_redacted_503(self):
+        from unittest.mock import patch
+        server=relay.Server(("127.0.0.1",0),self.q,"synthetic-owner-key",timeout=2)
+        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread.start()
+        try:
+            with patch.object(self.q,"state_events_since",side_effect=sqlite3.OperationalError(
+                    "SENSITIVE_SQL_PATH_or_internal_database_error")):
+                with closing(http.client.HTTPConnection(*server.server_address,timeout=3)) as conn:
+                    conn.request("GET","/bridge/audit?after=0&limit=1",
+                                 headers={"Authorization":"Bearer synthetic-owner-key"})
+                    response=conn.getresponse()
+                    self.assertEqual(503,response.status)
+                    raw=response.read().decode("utf-8")
+                    self.assertIn('"code":"audit_storage_unavailable"',raw)
+                    self.assertNotIn("SENSITIVE_SQL_PATH",raw)
+        finally:
+            server.shutdown()
+            thread.join(timeout=3)
+            server.server_close()
+
     def test_empty_cursor_preserves_offset_and_rejects_bad_numbers(self):
         self.q.submit(req(),turn_id="turn-audit-fixture-0081")
         empty=self.q.state_events_since(after_seq=10,limit=1)
