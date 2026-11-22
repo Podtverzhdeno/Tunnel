@@ -37,11 +37,21 @@ if(Test-Path -LiteralPath $manifestPath -PathType Leaf){
     try{
         $manifest=Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 |
             ConvertFrom-Json
-        $version=[string]$manifest.version
-        $manifestVersion=$manifest.manifest_version
-        $permissions=@($manifest.permissions | Where-Object {$_ -ne $null} |
-                       ForEach-Object {[string]$_})
-        $background=[string]$manifest.background.service_worker
+        if($manifest.PSObject.Properties['version']){
+            $version=[string]$manifest.version
+        }
+        if($manifest.PSObject.Properties['manifest_version']){
+            $manifestVersion=$manifest.manifest_version
+        }
+        if($manifest.PSObject.Properties['permissions']){
+            $permissions=@($manifest.permissions | Where-Object {$_ -ne $null} |
+                           ForEach-Object {[string]$_})
+        }
+        if($manifest.PSObject.Properties['background'] -and
+           $manifest.background -and
+           $manifest.background.PSObject.Properties['service_worker']){
+            $background=[string]$manifest.background.service_worker
+        }
     }catch{
         throw 'extension_manifest_malformed'
     }
@@ -66,7 +76,7 @@ $summary=[pscustomobject]@{
     read_only=$true
     path_in_output=$false
     secret_or_transcript_content_in_output=$false
-    files=@($files)
+    files=$files.ToArray()
     source_snapshot=$summary
     note='SHA256 is a file fingerprint, NOT a signed provenance assertion. The caller must compare with authorized source and check real loaded browser extension.'
 } | ConvertTo-Json -Depth 6 -Compress
