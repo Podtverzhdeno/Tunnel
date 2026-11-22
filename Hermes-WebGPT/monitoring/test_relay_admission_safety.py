@@ -14,7 +14,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from relay import MODEL, Queue, RelayError
+from relay import MODEL, Queue, RelayError, startup_reconciliation_status
 
 
 def request(number):
@@ -30,7 +30,8 @@ def turn(number):
 class RelayAdmissionSafetyContractTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.queue = Queue(Path(self.directory.name) / "relay-contract.sqlite")
+        self.path = Path(self.directory.name) / "relay-contract.sqlite"
+        self.queue = Queue(self.path)
 
     def tearDown(self):
         try:
@@ -101,6 +102,60 @@ class RelayAdmissionSafetyContractTests(unittest.TestCase):
             "SELECT COUNT(*) FROM requests WHERE state='claimed'").fetchone()[0], 1)
         self.assertEqual(self.queue.db.execute(
             "SELECT COUNT(*) FROM requests WHERE state='queued'").fetchone()[0], 4)
+
+    def test_two_independent_sqlite_connections_respect_same_cap(self):
+        # Two independent connection-level locks; SQLite BEGIN IMMEDIATE,
+        # not a shared Python RLock, must provide the admission fence.
+        second = Queue(self.path)
+        try:
+            def submit_from(i):
+                owner = second if i % 2 else self.queue
+                try:
+                    return ("admitted", owner.submit(request(i), turn_id=turn(i)))
+                except RelayError as exc:
+                    return ("rejected", str(exc))
+
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                outcome = list(pool.map(submit_from, range(20)))
+            self.assertEqual(sum(x[0] == "admitted" for x in outcome), 5)
+            self.assertEqual(sum(x == ("rejected", "queue_full") for x in outcome), 15)
+            self.assertEqual(len(self.rows()), 5)
+            self.assertEqual(second.db.execute(
+                "SELECT COUNT(*) FROM requests").fetchone()[0], 5)
+        finally:
+            second.close()
+
+    def test_claim_survives_reopen_without_automatic_reassignment(self):
+        for i in range(5):
+            self.submit(i)
+        claim = self.queue.claim(str(uuid.uuid4()))
+        self.assertIsNotNone(claim)
+        self.queue.close()
+        self.queue = Queue(self.path)
+        # Crash/reconnect loses local HTTP waiters, not durable owner state.
+        self.assertIsNone(self.queue.claim(str(uuid.uuid4())))
+        report = startup_reconciliation_status(self.queue)
+        self.assertEqual(report["startup_active_requests"], 1)
+        self.assertTrue(report["startup_reconciliation_required"])
+        self.assertEqual(report["startup_recovery_action"],
+                         "inspect_previous_effects_no_automatic_replay")
+        self.assertEqual(self.queue.read(claim["id"])["state"], "claimed")
+
+    def test_post_intent_loss_creates_uncertain_tombstone_not_replay(self):
+        request_id = self.submit(0)
+        claim = self.queue.claim(str(uuid.uuid4()))
+        self.assertEqual(claim["id"], request_id)
+        self.queue.event(request_id, claim["lease"], "intent", tab=123)
+        status = self.queue.cancel(request_id, reason="claim_delivery_failed")
+        self.assertEqual(status, "uncertain")
+        self.assertEqual(self.queue.read(request_id)["state"], "uncertain")
+        self.assertEqual(self.submit(0), request_id)
+        self.assertEqual(len(self.rows()), 1)
+        self.assertIsNone(self.queue.claim(str(uuid.uuid4())))
+        self.queue.close()
+        self.queue = Queue(self.path)
+        self.assertEqual(self.queue.read(request_id)["state"], "uncertain")
+        self.assertEqual(self.submit(0), request_id)
 
     def test_terminal_pre_effect_cancel_reopens_only_one_slot(self):
         accepted = [self.submit(i) for i in range(5)]
