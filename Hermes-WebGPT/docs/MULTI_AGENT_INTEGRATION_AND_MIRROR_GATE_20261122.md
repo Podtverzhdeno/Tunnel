@@ -233,3 +233,27 @@ OpenTelemetry GenAI Semantic Conventions плюс Weaver validator — **кан�
 CI GitHub Actions теперь поддерживает `merge_group: checks_requested` помимо PR, а также ограничение параллельных устаревших workflow runs при частых pushes множества агентов. GitHub рекомендует отдельный merge_group trigger при required checks в merge queue; иначе merge queue не получает требуемые статусы. Отключение старой CI-ревизии оставляет её `cancelled/stale`, а **не** `passed`. Запуск `schedule` работает только если workflow уже доступен в default branch. Источник: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group
 
 Проверка новой CI-матрицы: Windows/Ubuntu × Python 3.11/3.13, все четыре job должны подтвердить 45 тестов и исходный seven-file gate на фактическом проверяемом merge SHA; до публикации журнала последнего SHA не объявлять этот статус достигнутым.
+
+
+## 12. Что означает done: артефакт ≠ качество ≠ доставка
+
+Точная подтверждённая граница: `web-companion/advisory_completion.py` проверяет в `evaluate()` размер Markdown отчёта, заголовки `Job ID` / `## Outcome` / `## Evidence`, hash SHA-256, создаёт immutable ack с `status=REPORT_ACKED` и `trust_level=advisory_artifact_integrity_only`. В докстринге явно указано, что это **не trusted host identity verification и не formal acceptance**. `background.js` вправе использовать этот ACK для безопасного закрытия вкладки в своём узком workflow, но надстройка не должна преобразовывать его в `GOAL_VERIFIED` или `USER_DELIVERED`.
+
+**Отдельные оси состояния:**
+
+| Уровень | Владелец подтверждения | Что доказано | Чего не доказано |
+| --- | --- | --- | --- |
+| `TRANSPORT_ACK` | browser/HTTP client | Получен ответ на request | Клик, сохранность, completion |
+| `TURN_VISIBLE` | browser probe (low trust) | В DOM виден user turn/assistant | Независимое серверное принятие |
+| `REPORT_ACKED` | trusted local bridge hash verifier | Существует неизменённый привязанный отчёт | Смысл, достоверность, host approval |
+| `QUALITY_ACCEPTED` | независимый reviewer/test owner | Содержимое прошло согласованные acceptance cases | Telegram доставлен |
+| `HOST_APPROVED` | P085 trusted operator | Действие разрешено в scope | Эффект выполнен |
+| `EXTERNAL_EFFECT_RECONCILED` | provider receipt/read-back owner | Эффект соответствует action key | Качество задачи в целом |
+| `USER_DELIVERED` | Gateway Telegram outbound ACK/read-back | Результат отправлен в нужный chat/topic/message | Пользователь прочитал или согласился |
+| `GOAL_VERIFIED` | independent integration verifier | Все обязательные условия конкретной задачи подтверждены | Неизвестное вне заданных acceptance критериев |
+
+Нельзя строить один линейный «completed» из этих разных фактов: одни могут идти параллельно, другие остаются `unknown`. Снимать blocking evidence может только владелец соответствующей authority; обновления агента/наблюдателя не должны напрямую переписывать trusted verdict. Для 50 агентов метрики success rate считать по каждому уровню отдельно: доля отчетов, семантическая acceptance, доставленные Telegram и случаи `outcome_unknown`.
+
+**Failure injection:** валидный по шаблону, но пустой по смыслу отчёт → `REPORT_ACKED`, затем `QUALITY_REJECTED`; отчёт хорош, но Telegram 429/timeout → `GOAL_PENDING_DELIVERY`, не `USER_DELIVERED`; browser crashed, внешний Send неизвестен → всё ещё `EFFECT_OUTCOME_UNKNOWN` даже при живом observer; P085 approval expired → `HOST_APPROVED` недействителен для новой попытки.
+
+При review PR #10/#11/#14 необходимо сохранить текущий узкий contract `advisory_artifact_integrity_only` и не переименовывать его в authoritative success. Источник: `chat-launch-smoke-desktop-test/web-companion/advisory_completion.py:1–9, 30–155` и `background.js:515–539` на базовом main; нужна повторная проверка после слияния.
