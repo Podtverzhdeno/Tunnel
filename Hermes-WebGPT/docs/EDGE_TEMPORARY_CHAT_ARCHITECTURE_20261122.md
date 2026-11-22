@@ -175,3 +175,18 @@ CURRENT: DRAFT / NO-GO на production rollout Temporary Hermes transport. Пр�
 Проверка исходников GitHub Actions, Linux: `test_core.js`, `test_background_content.js`, `test_background.js`, `test_recovery.js` и `python -m unittest discover -s Hermes-WebGPT -p 'test_*.py'` — успешна. GitHub Actions, Windows: оригинальные PowerShell 5.1 parser checks для `Start-Hermes-Edge-Temporary.ps1` и `Measure-Hermes-Edge-CPU.ps1` — успешны. **Парсинг PowerShell не означает запуск Edge или замер CPU.** Подтверждение: https://github.com/Podtverzhdeno/Tunnel/actions/runs/45013026259
 
 Важно: теоретическое уменьшение интенсивности полного обхода в 4 раза (120 секунд вместо 30) не эквивалентно уменьшению общего CPU в 4 раза. Неизвестна доля полного recovery в общей нагрузке. Для количественной оценки нужны Windows-срезы и Edge Task Manager.
+
+## 13. Изолированная ручная проверка временного чата в расширении
+
+В этой ветке добавлена отдельная кнопка popup **«Открыть временный чат GPT»**. Она посылает `chat-smoke-open-temporary` в `background.js`, который открывает **ровно** `https://chatgpt.com/?temporary-chat=true` в активной вкладке существующего обычного окна, **не** выдавая задание очереди, **не** отправляя промпт и **не** запуская новую сессию Hermes.
+
+Принципиальные границы:
+- Команда принимается только от расширения (без `sender.tab`), а не от контент-скрипта веб-страницы.
+- Если подходящего окна нет, возвращает `no_browser_window`; браузер автоматически не создаёт.
+- Ответ `temporary_ui_verified:false` честно указывает, что URL открыт, но фактический режим ещё не подтверждён приложением ChatGPT.
+- В существующем `onRemoved` закрытие не принадлежащей никакому job временной вкладки не принимается за завершённую работу агента.
+- Это ручная диагностическая возможность, **не** автоматическое переключение старого `background.js::dispatch()` из постоянного чата в Temporary. Старый автопуть требует нового versioned ownership / result receipt protocol.
+
+Регрессии: `test_background.js` проверяет точный URL, отсутствие скрытого Send, единственный tab и отказ контент-скрипту; `test_popup_temporary.js` проверяет действие popup, краткое состояние пользователю и отсутствие вызова отправки модели. CI сверяет зеркала `web-companion` и `web-extension`, включая `popup.js` и `popup.html`.
+
+Для использования в отдельном Edge-профиле расширение необходимо **сначала явно установить** в этом профиле. Но даже после установки его автоматический режим Hermes ещё не считается готовым для Temporary Chat и не должен запускаться в production до выполнения T01–T15.
