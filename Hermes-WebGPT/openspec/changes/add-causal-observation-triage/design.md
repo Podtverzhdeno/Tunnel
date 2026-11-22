@@ -113,3 +113,10 @@ OpenSpec already describes pre-Send durable intent and no ambiguous-send retry (
 ## 10. Архитектурное решение о supported GPT transport (ADR-001)
 
 Отдельный документ [ADR-001 — transport evidence selection](ADR-001-transport-evidence-selection.md) строго сопоставляет официальный SIWC OSS → Responses, Codex App Server, прямой оплачиваемый API, локальную модель и браузерные маршруты. Взвешенные экспертные оценки пересчитаны по указанным весам, **не** выдаются за результаты бенчмарков. PR #12 остаётся владельцем исследования/реализации альтернативных transport; PR #13 не меняет inference routing. На каждый новый маршрут необходимы фактический OAuth scope, owner consent, exact request/delivery receipt, noReplay и E2E. Строгий запрет на молчаливый fallback к платному API и к недокументированному backend endpoint.
+
+
+## 11. Атомарный локальный журнал мониторинга (опциональный, без активации)
+
+**P0+ реализован:** monitoring/incident_sampler.py запускает один read-only опрос Relay через прежний queue_monitor, преобразует отчёт через incident_triage и сохраняет baseline+санитизированный incident в отдельный SQLite-файл с BEGIN IMMEDIATE/COMMIT. Доступный --interval 60 — только foreground loop, не Windows Service, не background scheduler и не фактически запущенный агент. Путь Relay берётся строго из действующей конфигурации, а не угадывается. Исходная база никогда не открывается на запись, journal symlink/source equality отклоняется. История bounded (2000), baseline сохраняется при недоступном источнике, повреждённый baseline fail-closed. Автоматический Send, recovery, approval или перезапуск worker исключены.
+
+**Новые focused offline tests:** 15 sampler cases, включая 24 конкурентных циклов и rollback на ошибке, плюс 29 causal triage; весь source-продукт на живом Windows пока не запущен. Runbook: monitoring/INCIDENT_SAMPLER_RUNBOOK.md. Режим read-only относится к *источнику Relay* — отдельный приватный журнал, в отличие от чистого triage, **записывается** по явному запуску владельца. Не загружать его в Git/Obsidian, не считать лог авторизованным proof.
