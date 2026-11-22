@@ -53,7 +53,9 @@ jobs:
         run: |
           $files = @(
             'Hermes-WebGPT/Start-Hermes-Edge-Temporary.ps1',
-            'Hermes-WebGPT/Measure-Hermes-Edge-CPU.ps1'
+            'Hermes-WebGPT/Measure-Hermes-Edge-CPU.ps1',
+            'Hermes-WebGPT/Benchmark-Hermes-Edge.ps1',
+            'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -68,3 +70,7 @@ jobs:
             }
             Write-Host "PS51 parse PASS: $file"
           }
+      - name: Validate synthetic CPU/RAM percentiles without launching Edge
+        shell: powershell
+        run: |
+          & 'Hermes-WebGPT/Test-Hermes-Edge-Benchmark.ps1'
