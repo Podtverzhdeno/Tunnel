@@ -130,6 +130,35 @@ class TemporaryChatLedgerTests(unittest.TestCase):
                             TEMPORARY_URL, self.profile)
         self.assertEqual(self.store.status(second_sid)["state"], "ATTACHED")
 
+    def test_paused_tab_can_only_be_released_by_explicit_owner_and_no_replay(self):
+        self.verify()
+        rid = new_uuid()
+        self.store.prepare_request(self.sid, rid, self.tab, self.epoch, self.profile)
+        self.store.arm_one_send(self.sid, rid, self.tab, self.epoch, self.profile)
+        self.store.pause_if_browser_lost(self.sid, reason="browser_closed")
+        with self.assertRaisesRegex(SessionConflict, "explicit_owner_release_required"):
+            self.store.archive_paused_session(
+                self.sid, self.profile, self.tab, self.epoch, user_approved=False)
+        with self.assertRaisesRegex(SessionConflict, "wrong_browser_profile"):
+            self.store.archive_paused_session(
+                self.sid, secrets.token_hex(16), self.tab, self.epoch,
+                user_approved=True)
+        self.store.archive_paused_session(
+            self.sid, self.profile, self.tab, self.epoch, user_approved=True)
+        snap = TemporaryChatLedger(self.path).status(self.sid)
+        self.assertEqual(snap["state"], "ARCHIVED")
+        self.assertIsNone(snap["tab_id"])
+        self.assertEqual(snap["requests"][0]["state"], "UNCERTAIN_NO_REPLAY")
+        with self.assertRaises(SessionConflict):
+            self.store.arm_one_send(self.sid, rid, self.tab, self.epoch, self.profile)
+        successor = new_uuid()
+        self.store.create_session(successor, self.profile)
+        # The same numeric browser tab ID may legitimately reappear later; it
+        # is not reusable until all old rights have been explicitly archived.
+        self.store.bind_tab(successor, self.tab, self.window, new_uuid(),
+                            TEMPORARY_URL, self.profile)
+        self.assertEqual(self.store.status(successor)["state"], "ATTACHED")
+
     def test_request_uuid_cannot_be_reused_across_sessions(self):
         self.verify()
         rid = new_uuid()
