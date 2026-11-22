@@ -17,6 +17,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -175,6 +176,23 @@ def parse_reply(text,request,ident):
     return {'id':'chatcmpl-hermes-'+ident,'object':'chat.completion','created':int(time.time()),'model':request['model'],
             'choices':[{'index':0,'message':message,'finish_reason':'tool_calls' if calls else 'stop'}]}
 
+@contextmanager
+def relay_audit_snapshot(connection):
+    """Stable read across event page and metadata on one SQLite connection.
+
+    Nested SAVEPOINT works inside caller's existing BEGIN IMMEDIATE during
+    fault injection; RELEASE never commits or changes the outer transaction.
+    """
+    connection.execute("SAVEPOINT relay_audit_snapshot")
+    try:
+        yield
+    except BaseException:
+        connection.execute("ROLLBACK TO SAVEPOINT relay_audit_snapshot")
+        raise
+    finally:
+        connection.execute("RELEASE SAVEPOINT relay_audit_snapshot")
+
+
 class Queue:
     def __init__(self,path):
         self.db=sqlite3.connect(path,check_same_thread=False,isolation_level=None)
@@ -251,7 +269,7 @@ class Queue:
         """
         if type(limit) is not int or not 1<=limit<=500:
             raise RelayError('invalid_audit_limit')
-        with self.lock:
+        with self.lock, relay_audit_snapshot(self.db):
             rows=self.db.execute('''
                 SELECT seq,request_id,previous_state,new_state,reason_code,recorded_utc
                 FROM request_state_events ORDER BY seq DESC LIMIT ?''',(limit,)).fetchall()
@@ -351,7 +369,7 @@ class Queue:
         if (type(after_seq) is not int or not 0<=after_seq<2**63 or
                 type(limit) is not int or not 1<=limit<=500):
             raise RelayError('invalid_audit_cursor')
-        with self.lock:
+        with self.lock, relay_audit_snapshot(self.db):
             rows=self.db.execute('''
                 SELECT seq,request_id,previous_state,new_state,reason_code,recorded_utc
                 FROM request_state_events
