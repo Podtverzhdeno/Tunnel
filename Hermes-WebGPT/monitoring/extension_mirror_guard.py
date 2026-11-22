@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import subprocess
 
 PAIR = (
     "manifest.json", "core.js", "content.js", "background.js",
@@ -75,6 +76,10 @@ def _manifest_contract(data: bytes) -> dict:
         raise UnsafeContract("MANIFEST_JSON_INVALID") from None
     if not isinstance(m, dict):
         raise UnsafeContract("MANIFEST_NOT_OBJECT")
+    if set(m) != {"manifest_version", "name", "version", "description",
+                  "permissions", "host_permissions", "background", "action",
+                  "content_scripts"}:
+        raise UnsafeContract("MANIFEST_FIELDS_CHANGED")
     if type(m.get("manifest_version")) is not int or m["manifest_version"] != 3:
         raise UnsafeContract("MANIFEST_VERSION_UNEXPECTED")
     if m.get("version") != VERSION:
@@ -84,17 +89,55 @@ def _manifest_contract(data: bytes) -> dict:
     if m.get("host_permissions") != list(HOSTS):
         raise UnsafeContract("HOST_SCOPE_CHANGED")
     bg = m.get("background")
-    if not isinstance(bg, dict) or bg.get("service_worker") != "background.js":
+    if bg != {"service_worker": "background.js"}:
         raise UnsafeContract("BACKGROUND_WORKER_CHANGED")
+    action = m.get("action")
+    if (not isinstance(action, dict) or
+        action.get("default_popup") != "popup.html" or
+        set(action) != {"default_popup", "default_title"}):
+        raise UnsafeContract("ACTION_POPUP_CHANGED")
     cs = m.get("content_scripts")
     if (not isinstance(cs, list) or len(cs) != 1 or
         not isinstance(cs[0], dict) or
+        set(cs[0]) != {"matches", "js", "run_at"} or
         cs[0].get("matches") != ["https://chatgpt.com/*"] or
         cs[0].get("js") != list(SCRIPTS) or
         cs[0].get("run_at") != "document_idle"):
         raise UnsafeContract("CONTENT_SCRIPT_SCOPE_CHANGED")
     return {"manifest_version": 3, "extension_version": VERSION,
             "permissions": list(PERMS), "host_permissions": list(HOSTS)}
+
+
+def _validate_revision(root: Path, revision: str | None) -> bool:
+    """Bind a supplied SHA to a clean, tracked checkout; never trust user text."""
+    if revision is None:
+        return False
+    if not SHA_PATTERN.fullmatch(revision):
+        raise EvidenceUnavailable("INVALID_SOURCE_REVISION")
+    paths = [str(folder / name) for folder in (SOURCE, COPY) for name in PAIR]
+
+    def run_git(*args: str, text: bool = True):
+        try:
+            cmd = ["git", "-C", str(root), *args]
+            return subprocess.run(cmd, capture_output=True, text=text,
+                                  timeout=8, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise EvidenceUnavailable("SOURCE_REVISION_UNVERIFIABLE") from None
+
+    head = run_git("rev-parse", "HEAD")
+    if head.returncode != 0 or head.stdout.strip() != revision:
+        raise EvidenceUnavailable("SOURCE_REVISION_NOT_CHECKED_OUT")
+    tracked = run_git("ls-files", "-z", "--", *paths, text=False)
+    if tracked.returncode != 0:
+        raise EvidenceUnavailable("SOURCE_FILES_UNTRACKED_OR_UNKNOWN")
+    tracked_paths = {p.decode("utf-8", errors="replace")
+                     for p in tracked.stdout.split(b"\0") if p}
+    if tracked_paths != set(paths):
+        raise EvidenceUnavailable("SOURCE_FILES_UNTRACKED_OR_UNKNOWN")
+    dirty = run_git("diff", "--quiet", "HEAD", "--", *paths)
+    if dirty.returncode != 0:
+        raise EvidenceUnavailable("SOURCE_FILES_DIRTY_OR_UNKNOWN")
+    return True
 
 
 def inspect(root: Path, revision: str | None = None) -> dict:
@@ -115,8 +158,9 @@ def inspect(root: Path, revision: str | None = None) -> dict:
                             "bytes": len(original)})
         if filename == "manifest.json":
             manifest = _manifest_contract(original)
+    revision_verified = _validate_revision(root, revision)
     return {"schema_version": 1, "status": "source_pair_verified",
-            "source_revision": revision, "files_verified": len(PAIR),
+            "source_revision": revision, "source_revision_verified": revision_verified, "files_verified": len(PAIR),
             "source": str(SOURCE), "mirror": str(COPY),
             "manifest": manifest,
             "file_digests": digest_rows,
