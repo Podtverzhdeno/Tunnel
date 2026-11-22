@@ -130,6 +130,52 @@ class QueueMonitorTests(unittest.TestCase):
         self.assertEqual(self.report(baseline=old)['alerts'][0]['counts'],
                          {'blocked:request_timeout': 1})
 
+    def test_terminal_done_to_queued_rewind_is_reported_without_ids(self):
+        self.add(state='done')
+        old = self.report()
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
+            db.execute("UPDATE requests SET state='queued'")
+        report = self.report(baseline=old)
+        self.assertTrue(report['attention_required'])
+        regression = next(a for a in report['alerts']
+                          if a['code'] == 'illegal_state_regression')
+        self.assertEqual(regression['transitions'], {'done->queued': 1})
+        self.assertNotIn('request-private', json.dumps(regression))
+        self.assertNotIn('PRIVATE_', json.dumps(regression))
+
+    def test_terminal_uncertain_to_done_rewind_is_not_silent_recovery(self):
+        self.add(state='uncertain', reason='web_uncertain_send')
+        old = self.report()
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
+            db.execute("UPDATE requests SET state='done', reason=NULL")
+        report = self.report(baseline=old)
+        self.assertEqual(next(a for a in report['alerts']
+                              if a['code'] == 'illegal_state_regression')['transitions'],
+                         {'uncertain->done': 1})
+        self.assertEqual(report['scope'], 'queue_metadata_only')
+
+    def test_active_saved_to_claimed_rewind_has_integrity_alert(self):
+        self.add(state='saved')
+        old = self.report()
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
+            db.execute("UPDATE requests SET state='claimed'")
+        report = self.report(baseline=old)
+        self.assertEqual(next(a for a in report['alerts']
+                              if a['code'] == 'illegal_state_regression')['transitions'],
+                         {'saved->claimed': 1})
+
+    def test_forward_skipped_phases_are_not_false_regressions(self):
+        self.add(state='queued')
+        old = self.report()
+        with contextlib.closing(sqlite3.connect(self.db)) as db, db:
+            db.execute("UPDATE requests SET state='saved'")
+        self.assertEqual(self.report(baseline=old)['alerts'], [])
+
+    def test_terminal_unchanged_does_not_create_regression(self):
+        self.add(state='done')
+        old = self.report()
+        self.assertEqual(self.report(baseline=old)['alerts'], [])
+
     def test_stale_saved_state_is_included_without_claiming_phase_latency(self):
         self.add(state='saved', created=400)
         r = self.report()
