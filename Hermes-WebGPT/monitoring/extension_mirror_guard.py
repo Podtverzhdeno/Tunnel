@@ -198,7 +198,12 @@ def _incident(exc: Exception, revision: str | None) -> dict:
 
 def _safe_report_target(root: Path, requested: Path) -> Path:
     """Never overwrite source, credentials or arbitrary files via --report."""
-    root = root.resolve()
+    # Preserve the caller's lexical checkout spelling: Windows 8.3 aliases
+    # (RUNNER~1) can differ from Path.resolve() canonical long paths.
+    # Symlink protection is enforced separately on the final path components.
+    root = root.absolute()
+    if root.is_symlink():
+        raise EvidenceUnavailable("REPORT_SYMLINK")
     if requested.name not in {"mirror-report.json", "webgpt-mirror-report.json"}:
         raise EvidenceUnavailable("REPORT_FILENAME_NOT_ALLOWLISTED")
     if ".." in requested.parts:
