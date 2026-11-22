@@ -25,6 +25,10 @@ MODEL_CDP='web-chatgpt-high-cdp'
 MAX_BODY=524288
 MAX_PROMPT=120000
 TERMINAL={'done','blocked','uncertain'}
+# Admission safety for many GPT/Hermes agents: no unbounded HTTP waiters
+# for one logical turn while the actual browser still has one active slot.
+DEFAULT_MAX_HTTP_WAITERS=64
+DEFAULT_MAX_WAITERS_PER_TURN=8
 from hermes_tool_schema_guard import ToolSchemaError, validate_offered_tool_arguments
 from model_prompt_compaction import model_request_for_web
 
@@ -496,7 +500,14 @@ class Queue:
 class Server(ThreadingHTTPServer):
     daemon_threads=True
     def __init__(self,address,queue,key,timeout=1200,enable_playwright=False,
-                 playwright_key=None):
+                 playwright_key=None,max_http_waiters=DEFAULT_MAX_HTTP_WAITERS,
+                 max_waiters_per_turn=DEFAULT_MAX_WAITERS_PER_TURN):
+        if (type(max_http_waiters) is not int or not 1<=max_http_waiters<=1000
+                or type(max_waiters_per_turn) is not int or
+                not 1<=max_waiters_per_turn<=max_http_waiters):
+            raise RelayError('invalid_waiter_budget')
+        self.max_http_waiters=max_http_waiters
+        self.max_waiters_per_turn=max_waiters_per_turn
         self.queue,self.key,self.request_timeout=queue,key,timeout
         self.enable_playwright=bool(enable_playwright)
         if self.enable_playwright:
@@ -557,7 +568,15 @@ class Server(ThreadingHTTPServer):
         # attach in the gap between detach and cancellation.
         with self._waiters_lock:
             if self._closing.is_set():raise RelayError('relay_shutting_down')
+            # Reject before queue.submit() to avoid orphaning an unclaimed
+            # request when all HTTP subscriber slots are already occupied.
+            if sum(self._waiters.values())>=self.max_http_waiters:
+                raise RelayError('http_waiter_capacity')
             ident=self.queue.submit(body,transport=transport,turn_id=turn_id)
+            # For an existing logical turn, rejecting a new subscriber must
+            # never cancel or modify its in-flight browser execution.
+            if self._waiters.get(ident,0)>=self.max_waiters_per_turn:
+                raise RelayError('turn_waiter_capacity')
             self._waiters[ident]=self._waiters.get(ident,0)+1
             return ident
     def detach_waiter(self,ident,on_last=None,reason='client_disconnected'):
@@ -602,7 +621,9 @@ class Handler(BaseHTTPRequestHandler):
     def write_json(self,status,value):
         body=compact(value).encode()
         self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8')
-        self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers()
+        self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store')
+        if status==429:self.send_header('Retry-After','1')
+        self.end_headers()
         self.wfile.write(body)
     def error(self,status,code):self.write_json(status,{'error':{'message':code,'type':'relay_error','code':code}})
     def principal(self):
@@ -655,6 +676,8 @@ class Handler(BaseHTTPRequestHandler):
                 'aged_active_basis':'age_since_request_creation_not_worker_heartbeat',
                 'active_requests':active,
                 'active_http_waiters':self.server.active_waiter_count(),
+                'max_http_waiters':self.server.max_http_waiters,
+                'max_waiters_per_turn':self.server.max_waiters_per_turn,
                 'max_active_requests':1,
             })
         return self.error(404,'not_found')
@@ -815,7 +838,9 @@ class Handler(BaseHTTPRequestHandler):
             abandoned=waiter_registered
             try:
                 status=(503 if isinstance(exc,RelayError) and
-                        str(exc)=='relay_shutting_down' else 400)
+                        str(exc)=='relay_shutting_down' else
+                        429 if isinstance(exc,RelayError) and
+                        str(exc) in ('http_waiter_capacity','turn_waiter_capacity') else 400)
                 self.error(status,str(exc) if isinstance(exc,RelayError) else 'invalid_request')
             except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
                 abandoned=True
