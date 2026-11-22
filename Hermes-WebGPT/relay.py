@@ -342,6 +342,48 @@ class Queue:
                 if row['transport'] in counts and row['state'] in counts[row['transport']]:
                     counts[row['transport']][row['state']]=row['total']
         return counts
+    def state_events_since(self,after_seq=0,limit=100):
+        """Cursor-feed of committed local states; *not* external UI receipts.
+
+        Only safe machine metadata are returned. Readers must be authenticated
+        at the HTTP boundary and keep an independent durable cursor.
+        """
+        if (type(after_seq) is not int or not 0<=after_seq<2**63 or
+                type(limit) is not int or not 1<=limit<=500):
+            raise RelayError('invalid_audit_cursor')
+        with self.lock:
+            rows=self.db.execute('''
+                SELECT seq,request_id,previous_state,new_state,reason_code,recorded_utc
+                FROM request_state_events
+                WHERE seq>? ORDER BY seq ASC LIMIT ?''',
+                (after_seq,limit+1)).fetchall()
+            has_more=len(rows)>limit
+            batch=rows[:limit]
+            before=self.db.execute('''
+                SELECT pre_audit_existing_requests FROM request_state_audit_meta
+                WHERE id=1''').fetchone()[0]
+            events=[]
+            for row in batch:
+                code=row['reason_code']
+                if not isinstance(code,str) or not re.fullmatch(r'[a-z_]{1,60}',code):
+                    code='none' if code is None else 'other'
+                events.append({
+                    'seq':row['seq'],
+                    'request_digest':hashlib.sha256(row['request_id'].encode()).hexdigest(),
+                    'previous_state':row['previous_state'],'new_state':row['new_state'],
+                    'reason_code':code,'recorded_utc':row['recorded_utc']})
+            unobserved=self.db.execute('''
+                SELECT COUNT(*) FROM requests r
+                WHERE NOT EXISTS (SELECT 1 FROM request_state_events e
+                                  WHERE e.request_id=r.id)''').fetchone()[0]
+            return {'events':events,
+                    'has_more':has_more,
+                    'next_seq':events[-1]['seq'] if events else after_seq,
+                    'pre_audit_existing_request_count':before,
+                    'history_complete_for_current_requests':before==0 and unobserved==0,
+                    'ordering':'sqlite_transaction_local_not_external_effect_order',
+                    'browser_send_confirmed':False}
+
     def submit(self,value,transport='extension',turn_id=None):
         if transport not in ('extension','playwright'):raise RelayError('invalid_transport')
         if turn_id is not None and (not isinstance(turn_id,str) or
@@ -756,6 +798,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.write_json(200,{'object':'list','data':[
                 {'id':model,'object':'model','owned_by':'local-web-relay'}
                 for model in ids]})
+        if self.path.startswith('/bridge/audit'):
+            # Authenticated Hermes principal only (already checked above).
+            match=re.fullmatch(r'/bridge/audit(?:\\?after=([0-9]{1,18})&limit=([0-9]{1,3}))?',self.path)
+            if not match:return self.error(400,'invalid_audit_query')
+            after=int(match.group(1)) if match.group(1) else 0
+            limit=int(match.group(2)) if match.group(2) else 100
+            try:
+                return self.write_json(200,self.server.queue.state_events_since(after,limit))
+            except RelayError:
+                return self.error(400,'invalid_audit_cursor')
         if self.path=='/bridge/status':
             counts=self.server.queue.status_counts()
             active=sum(counts[transport][state]
