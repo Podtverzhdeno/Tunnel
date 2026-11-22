@@ -140,6 +140,41 @@ class WaiterBudgetTests(unittest.TestCase):
             server_thread.join(timeout=3)
             self.assertFalse(server_thread.is_alive())
 
+    def test_sse_exception_after_headers_has_one_http_response(self):
+        # Simulate an error once SSE headers have already been committed.
+        # A second HTTP status line would corrupt the stream and hide cause.
+        from unittest.mock import patch
+        t = threading.Thread(target=self.server.serve_forever, daemon=True)
+        t.start()
+        try:
+            body = request("stream-with-failing-backend")
+            body["stream"] = True
+            with patch.object(self.queue, "read_status",
+                              side_effect=ValueError("PRIVATE_INTERNAL_EXCEPTION")):
+                with closing(http.client.HTTPConnection(
+                        *self.server.server_address, timeout=3)) as conn:
+                    conn.request(
+                        "POST", "/v1/chat/completions", body=json.dumps(body),
+                        headers={"Authorization": "Bearer synthetic-only-key",
+                                 "Content-Type": "application/json"})
+                    response = conn.getresponse()
+                    self.assertEqual(response.status, 200)
+                    self.assertIn("text/event-stream", response.getheader("Content-Type"))
+                    raw = response.read().decode("utf-8")
+            self.assertIn('data: {"error":', raw)
+            self.assertIn('"code":"invalid_request"', raw)
+            self.assertNotIn("PRIVATE_INTERNAL_EXCEPTION", raw)
+            self.assertNotIn("HTTP/1.0 400", raw)
+            self.assertNotIn("HTTP/1.1 400", raw)
+            self.assertEqual(self.server.active_waiter_count(), 0)
+            self.assertEqual(
+                self.queue.db.execute("SELECT state FROM requests").fetchone()[0],
+                "blocked")
+        finally:
+            self.server.shutdown()
+            t.join(timeout=3)
+            self.assertFalse(t.is_alive())
+
     def test_status_reports_actual_waiter_budget(self):
         self.server.submit_and_attach(request(), turn_id="turn-id-fixture-0001")
         t=threading.Thread(target=self.server.serve_forever, daemon=True)
