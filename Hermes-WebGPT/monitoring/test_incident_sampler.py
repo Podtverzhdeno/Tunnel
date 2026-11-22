@@ -139,6 +139,10 @@ class SamplerTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM incident_events').fetchone()[0], 1)
             self.assertEqual(db.execute('SELECT snapshot FROM monitor_baseline').fetchone()[0], 'not-json')
 
+    def test_watch_mode_rejects_unbounded_high_frequency_polling(self):
+        with self.assertRaises(SystemExit):
+            s.main(['--db', str(self.source), '--journal', str(self.journal), '--interval', '0.01'])
+
     def test_cli_unavailable_has_no_user_path_or_credentials(self):
         from io import StringIO
         with patch.object(s.queue_monitor, 'observe', side_effect=RuntimeError('secret_token_123'), create=True):
