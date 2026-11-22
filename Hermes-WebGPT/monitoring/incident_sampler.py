@@ -121,7 +121,7 @@ def main(argv=None):
     p.add_argument('--interval', type=float, default=0,
                    help='Seconds; 0=one cycle. Positive value watches in foreground only.')
     args = p.parse_args(argv)
-    if not 0 <= args.interval <= 86400:
+    if not 0 <= args.interval <= 86400 or 0 < args.interval < 5:
         p.error('invalid_interval')
     try:
         while True:
