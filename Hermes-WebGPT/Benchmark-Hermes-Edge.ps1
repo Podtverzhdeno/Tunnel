@@ -45,9 +45,10 @@ $cores=@($clean | ForEach-Object {[double]$_.cpu_equivalent_cores})
     warmup_seconds=$WarmupSeconds
     cpu_percent_machine_p50=(Percentile $cpu 0.5)
     cpu_percent_machine_p95=(Percentile $cpu 0.95)
+    p95_exploratory_only=($clean.Count -lt 20)
     cpu_equivalent_cores_p50=(Percentile $cores 0.5)
     ram_working_set_mib_p50=(Percentile $mem 0.5)
     ram_working_set_mib_p95=(Percentile $mem 0.95)
     process_churn_samples=$Samples-$clean.Count
-    note='No benchmark result proves improvement without same-machine before/after controls; high process churn invalidates comparisons. Resident sets may double-count shared pages.'
+    note='p95 with fewer than 20 stable samples is exploratory (five-sample p95 is the maximum). Compare equal workloads on the same machine; churn invalidates samples. Working-set sums may double-count shared pages.'
 } | ConvertTo-Json -Compress
