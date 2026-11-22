@@ -31,7 +31,7 @@ def _encode(data):
                       allow_nan=False)
 
 
-def _unknown(code='OBSERVER_UNAVAILABLE'):
+def _unknown(code='observer_unavailable'):
     return incident_triage.triage_report({'observation': 'unavailable', 'error': code})
 
 
@@ -74,8 +74,12 @@ def run_cycle(relay_db, journal_db, *, max_rows=10000, stale_seconds=600,
                         max_rows=max_rows, latency_target_seconds=latency_target_seconds)
                     summary = incident_triage.triage_report(result)
                     next_baseline = result['snapshot']
+                except queue_monitor.ObservationError as exc:
+                    # Preserve only an allowlisted symbolic diagnostic code.
+                    summary = _unknown(str(exc))
+                    next_baseline = None
                 except Exception:
-                    # The source remains unobserved; DO NOT overwrite good baseline.
+                    # Unexpected error text may contain local secrets: discard it.
                     summary = _unknown()
                     next_baseline = None
                 if next_baseline is not None:
