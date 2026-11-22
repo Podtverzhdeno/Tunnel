@@ -459,6 +459,15 @@ async function send(ext,message,tabId){
   assert.equal(scaled.queue.length,5,"five jobs remain queued at capacity");
   assert.equal(scaled.logs.filter(x=>x.type==="opened").length,25,
     "no duplicate tabs across alarms");
+  // Changing to a lower limit must NOT kill an already active agent page.
+  scaled.local.chatSmokeEnergyProfile="eco";
+  scaled.events.alarm({name:"chat-smoke-queue"});
+  for(let j=0;j<65;j++)await new Promise(r=>setImmediate(r));
+  assert.equal(scaled.tabs.size,25,"shrinking cap only throttles future claims");
+  assert.equal(scaled.queue.length,5,"profile change does not consume new jobs");
+  assert.equal(scaled.logs.filter(x=>x.type==="closed").length,0,
+    "resource profile switch never forcibly closes in-flight tabs");
+  scaled.local.chatSmokeEnergyProfile="max_parallel";
   const outcome=await send(scaled,{type:"chat-smoke-finished",id:idAt(0),
     status:"submitted",userSeen:true,reason:"submitted_after_min_hold",
     url:"https://chatgpt.com/c/abc123"},300);
