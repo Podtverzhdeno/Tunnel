@@ -217,6 +217,15 @@ def triage_report(report):
         issues.append(_issue('BLOCKED_HISTORY_PRESENT', 'PREVIOUS_REPORTED_FAILURE',
                              severity='P3', count=counts['blocked'], state='blocked',
                              action='compare_with_baseline_before_escalation'))
+    # Structural queueing is operational context, not automatically an incident:
+    # the inspected Relay main allows only one claimed/intent/saved request.
+    active_claims = sum(counts[state] for state in ('claimed', 'intent', 'saved'))
+    queueing = {
+        'queued_requests': counts['queued'], 'active_claims_observed': active_claims,
+        'cause_confirmed': False,
+        'signal': ('QUEUED_BEHIND_ACTIVE_CLAIM' if counts['queued'] and active_claims else
+                   'QUEUED_WITHOUT_ACTIVE_CLAIM' if counts['queued'] else 'NO_QUEUED_REQUESTS'),
+    }
     severity_order = {'P1': 0, 'P2': 1, 'P3': 2}
     issues.sort(key=lambda x: (severity_order[x['severity']], x['code'], x.get('state', ''), x.get('reason_code', '')))
     return {
@@ -225,6 +234,7 @@ def triage_report(report):
         'source_scope': 'queue_metadata_only',
         'confidence': 'queue_metadata_only',
         'counts': counts,
+        'queueing_observation': queueing,
         'issues': issues,
         'safe_auto_recovery': False,
         'telegram_delivery_verified': False,
