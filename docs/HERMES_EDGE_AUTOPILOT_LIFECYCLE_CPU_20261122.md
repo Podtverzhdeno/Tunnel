@@ -90,6 +90,14 @@ Inside the dedicated Edge profile: use `edge://extensions` and install only the 
 
 Remote debugging is off by default because its endpoint grants broad control of the profile; if enabled, restrict it to loopback, never port-forward it, never expose it to another machine and do not reuse personal profiles.
 
+### 4.1. One active browser client per bridge
+
+Migration from Yandex/Chrome to Edge requires a **quiescent handover**. The old browser extension and the new Edge extension must **not simultaneously claim jobs** from the same loopback bridge. Each extension has its own MV3 `storage.session` and tab IDs, while the bridge's 0.6.6 heartbeat checks only version/state/window count, not cryptographic browser identity. Concurrent clients can race to consume queue items, complicate recovery, inflate CPU and make process/window evidence misleading.
+
+Before enabling Edge worker polling: pause admissions; record exact queue/active/unknown job counts; reconcile any uncertain Send; stop only the **old extension's polling** by user-approved disable/reload (do not delete its profile or close uncertain tabs); then enable Edge once, verify bridge heartbeat and a **single deliberate dry-run**. Browser process presence alone is not evidence that the correct extension version is running. This handover should eventually use host-attested single-client leases/fencing, but an agent-writable local flag is not sufficient identity proof.
+
+
+
 ## 5. CPU model and measurements — no invented percentage
 
 ```text
