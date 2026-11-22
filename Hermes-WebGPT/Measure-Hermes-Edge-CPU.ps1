@@ -65,5 +65,7 @@ foreach($row in $after){$memory += $row.working_set_bytes}
     cpu_percent_of_machine=[Math]::Round($delta/$elapsed/$cores*100,2)
     working_set_mib=[Math]::Round($memory/1MB,1)
     new_or_restarted_processes=$newCount
-    note='Approximation: CPU used by processes created during sample omitted.'
+    exited_processes=[Math]::Max(0,$before.Count-$after.Count+$newCount)
+    comparable_sample=($newCount -eq 0 -and $before.Count -eq $after.Count)
+    note='Approximation: process churn means some CPU time is omitted; sums of working sets can double-count shared pages.'
 } | ConvertTo-Json -Compress
