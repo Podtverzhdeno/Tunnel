@@ -107,7 +107,7 @@ Scoring rubric (each 0–5): safety impact S, causal diagnosis D, feasibility F,
 | 1 | Unified cross-component evidence envelope + authority labels | 5/5/4/5/4 | 4.75 | offline contract/compat tests |
 | 2 | Preserve unknown external effects across attempts | 5/5/4/4/3 | 4.55 | crash-after-click and retry race |
 | 3 | Runtime/source build attestation incl. installed MV3 manifest | 5/4/4/5/4 | 4.50 | installed SHA/extension mapping |
-| 4 | One selected authoritative scheduler/ledger | 5/5/3/5/2 | 4.50 | migration/rollback + concurrent tests |
+| 4 | One selected authoritative scheduler/ledger | 5/5/3/5/2 | 4.45 | migration/rollback + concurrent tests |
 | 5 | Scoped CDP ownership and tab identity fencing | 5/4/3/4/3 | 4.10 | external Edge + second-agent E2E |
 | 6 | Bounded causal archive with gap detection | 4/5/4/4/3 | 4.20 | eviction, restart, corruption tests |
 | 7 | Operator incident timeline with confidence/unknown fields | 4/5/4/4/3 | 4.20 | no false-green scenarios |
