@@ -159,6 +159,19 @@ def inspect(root: Path, revision: str | None = None) -> dict:
                             "bytes": len(original)})
         if filename == "manifest.json":
             manifest = _manifest_contract(original)
+    # Exactly the reviewed installable files. A developer's local bearer
+    # config may exist in a working copy but MUST never be read by this gate.
+    # Any additional executable/content payload requires explicit review.
+    installed = root / COPY
+    try:
+        entries = {entry.name for entry in installed.iterdir()}
+    except OSError:
+        raise EvidenceUnavailable("INSTALLATION_FILESET_UNREADABLE") from None
+    unknown = entries - set(PAIR) - {"bridge-config.json"}
+    if unknown:
+        raise UnsafeContract("INSTALLATION_PACKAGE_FILESET_CHANGED")
+    if (installed / "bridge-config.json").is_symlink():
+        raise UnsafeContract("INSTALLATION_CONFIG_SYMLINK")
     revision_verified = _validate_revision(root, revision)
     return {"schema_version": 1, "status": "source_pair_verified",
             "source_revision": revision, "source_revision_verified": revision_verified, "files_verified": len(PAIR),
