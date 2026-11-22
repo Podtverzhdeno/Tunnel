@@ -826,6 +826,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.write_json(200,self.server.queue.state_events_since(after,limit))
             except RelayError:
                 return self.error(400,'invalid_audit_cursor')
+            except sqlite3.Error:
+                # Storage failure is not "no events" and not an agent
+                # completion. Never disclose SQL paths or raw DB errors.
+                return self.error(503,'audit_storage_unavailable')
         if self.path=='/bridge/status':
             counts=self.server.queue.status_counts()
             active=sum(counts[transport][state]
